@@ -32,3 +32,33 @@ doctor:
     @docker --version
     @docker compose version
     @just --version
+
+# ── API (apps/api) ────────────────────────────────────────────────────────────
+
+# Install Python dependencies for the API
+api-install:
+    cd apps/api && uv sync
+
+# Start the API dev server with hot-reload
+api-dev:
+    cd apps/api && uv run uvicorn lemon_ledger.main:app --reload --host 0.0.0.0 --port 8000
+
+# Apply all pending Alembic migrations
+migrate:
+    cd apps/api && uv run alembic upgrade head
+
+# Generate a new Alembic migration  (usage: just makemigration initial_schema)
+makemigration name="":
+    cd apps/api && uv run alembic revision --autogenerate -m "{{name}}"
+
+# Run the test suite
+api-test:
+    cd apps/api && uv run pytest tests/ -v
+
+# Run ruff linter + formatter check
+api-lint:
+    cd apps/api && uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/
+
+# Run mypy type-checker in strict mode
+api-typecheck:
+    cd apps/api && uv run mypy src/ tests/
