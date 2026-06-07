@@ -1,19 +1,18 @@
 import asyncio
+import sys
 from logging.config import fileConfig
 from pathlib import Path
-import sys
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
-
 # Make the src layout importable when running alembic directly
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from lemon_ledger.db.base import Base  # noqa: E402
 import lemon_ledger.models  # noqa: E402, F401 — registers all models with Base.metadata
+from lemon_ledger.db.base import Base  # noqa: E402
 
 config = context.config
 

@@ -1,0 +1,12 @@
+rules:
+  - id: no-transaction-sending
+    languages: [python]
+    severity: ERROR
+    message: >
+      Lemon Ledger is read-only. Sending or signing transactions is prohibited.
+      web3 write/sign methods must never appear in this codebase.
+    pattern-either:
+      - pattern: $X.send_transaction(...)
+      - pattern: $X.send_raw_transaction(...)
+      - pattern: $X.transact(...)
+      - pattern: $X.sign_transaction(...)

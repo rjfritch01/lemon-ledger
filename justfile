@@ -51,7 +51,7 @@ migrate:
 makemigration name="":
     cd apps/api && uv run alembic revision --autogenerate -m "{{name}}"
 
-# Run the test suite
+# Run the test suite with coverage gate (>=80%)
 api-test:
     cd apps/api && uv run pytest tests/ -v
 
@@ -62,3 +62,12 @@ api-lint:
 # Run mypy type-checker in strict mode
 api-typecheck:
     cd apps/api && uv run mypy src/ tests/
+
+# Run Bandit + Semgrep security scans
+api-security:
+    cd apps/api && uv run bandit -c pyproject.toml -r src/lemon_ledger
+    uvx semgrep --config tools/semgrep/no-transaction-sending.yml --error apps/
+
+# Run pre-commit hooks against all files
+precommit:
+    pre-commit run --all-files

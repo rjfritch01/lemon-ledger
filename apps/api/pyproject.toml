@@ -23,6 +23,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "sqlalchemy[mypy]>=2.0.30",
+    "bandit>=1.7",
 ]
 
 [build-system]
@@ -35,6 +36,7 @@ packages = ["src/lemon_ledger"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["migrations"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -48,7 +50,19 @@ plugins = ["sqlalchemy.ext.mypy.plugin", "pydantic.mypy"]
 module = ["testcontainers.*", "asyncpg.*"]
 ignore_missing_imports = true
 
+[tool.bandit]
+targets = ["src/lemon_ledger"]
+exclude_dirs = ["tests", "migrations"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+addopts = "--cov=src/lemon_ledger --cov-report=term-missing --cov-fail-under=80 --cov-config=pyproject.toml"
+
+[tool.coverage.run]
+source = ["src/lemon_ledger"]
+omit = ["*/migrations/*"]
+
+[tool.coverage.report]
+omit = ["*/migrations/*"]
