@@ -32,3 +32,9 @@ repos:
         entry: uvx semgrep --config tools/semgrep/no-transaction-sending.yml --error
         pass_filenames: false
         always_run: true
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
