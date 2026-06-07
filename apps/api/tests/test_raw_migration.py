@@ -4,7 +4,7 @@ Verifies schema correctness via Testcontainers Postgres after running
 alembic upgrade head, then confirms downgrade reverses all changes.
 """
 
-from collections.abc import Generator, Sequence
+from collections.abc import AsyncGenerator, Generator, Sequence
 
 import pytest
 from alembic import command
@@ -50,7 +50,7 @@ async def _scalar(session: AsyncSession, sql: str, params: dict[str, str]) -> st
 
 
 @pytest.fixture
-async def db(raw_db_url: str) -> Generator[AsyncSession, None, None]:
+async def db(raw_db_url: str) -> AsyncGenerator[AsyncSession, None]:
     engine = create_async_engine(raw_db_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:

@@ -24,10 +24,10 @@ def redis_container() -> Generator[RedisContainer, None, None]:
 
 
 @pytest.fixture
-def redis_client(redis_container: RedisContainer) -> "redis_lib.Redis[Any]":
+def redis_client(redis_container: RedisContainer) -> Any:
     host = redis_container.get_container_host_ip()
     port = int(redis_container.get_exposed_port(6379))
-    r: redis_lib.Redis[Any] = redis_lib.Redis(host=host, port=port, db=0)
+    r = redis_lib.Redis(host=host, port=port, db=0)
     r.flushdb()
     return r
 
@@ -44,14 +44,14 @@ def test_null_rate_limiter_never_blocks() -> None:
 # ── RedisTokenBucket ──────────────────────────────────────────────────────────
 
 
-def test_token_bucket_grants_up_to_burst(redis_client: "redis_lib.Redis[Any]") -> None:
+def test_token_bucket_grants_up_to_burst(redis_client: Any) -> None:
     bucket = RedisTokenBucket(redis_client, "test:bucket:burst", rate_per_sec=100.0, burst=5)
     # Should be able to acquire burst tokens quickly without sleeping
     for _ in range(5):
         bucket.acquire()
 
 
-def test_token_bucket_lua_script_runs(redis_client: "redis_lib.Redis[Any]") -> None:
+def test_token_bucket_lua_script_runs(redis_client: Any) -> None:
     # Verify the Lua script executes and modifies state atomically.
     bucket = RedisTokenBucket(redis_client, "test:bucket:lua", rate_per_sec=1000.0, burst=10)
     bucket.acquire()
@@ -59,7 +59,7 @@ def test_token_bucket_lua_script_runs(redis_client: "redis_lib.Redis[Any]") -> N
     assert data[0] is not None  # tokens field was written
 
 
-def test_token_bucket_independent_keys(redis_client: "redis_lib.Redis[Any]") -> None:
+def test_token_bucket_independent_keys(redis_client: Any) -> None:
     # Two buckets with different keys do not share state.
     b1 = RedisTokenBucket(redis_client, "test:bucket:chain_a", rate_per_sec=1000.0, burst=3)
     b2 = RedisTokenBucket(redis_client, "test:bucket:chain_b", rate_per_sec=1000.0, burst=3)
@@ -69,7 +69,7 @@ def test_token_bucket_independent_keys(redis_client: "redis_lib.Redis[Any]") -> 
     b2.acquire()
 
 
-def test_token_bucket_refills_over_time(redis_client: "redis_lib.Redis[Any]") -> None:
+def test_token_bucket_refills_over_time(redis_client: Any) -> None:
     import time
 
     # Drain the bucket then wait for a partial refill.
