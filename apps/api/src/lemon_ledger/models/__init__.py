@@ -1,4 +1,8 @@
 from lemon_ledger.models.entity import Entity as Entity
+from lemon_ledger.models.raw import RawInternalTx as RawInternalTx
+from lemon_ledger.models.raw import RawLog as RawLog
+from lemon_ledger.models.raw import RawTokenTransfer as RawTokenTransfer
+from lemon_ledger.models.raw import RawTransaction as RawTransaction
 from lemon_ledger.models.token_registry import TokenRegistry as TokenRegistry
 from lemon_ledger.models.user import User as User
 from lemon_ledger.models.user_token_classification import (

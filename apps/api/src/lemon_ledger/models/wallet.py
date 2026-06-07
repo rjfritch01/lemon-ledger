@@ -14,8 +14,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lemon_ledger.db.base import Base
+from lemon_ledger.models._constraints import CHAIN_SQL
 
-_CHAINS = "chain IN ('lemonchain','bsc')"
+_CHAINS = CHAIN_SQL
 _ROLES = "role IN ('vest','live','stake','nft','cold','bridge','other')"
 _ADDR_LOWER = "address = lower(address)"
 
