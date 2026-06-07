@@ -68,6 +68,14 @@ api-security:
     cd apps/api && uv run bandit -c pyproject.toml -r src/lemon_ledger
     uvx semgrep --config tools/semgrep/no-transaction-sending.yml --error apps/
 
+# Start Celery worker (reads broker/backend from .env)
+api-worker:
+    cd apps/api && uv run celery -A lemon_ledger.worker worker -l info
+
+# Start Celery beat scheduler
+api-beat:
+    cd apps/api && uv run celery -A lemon_ledger.worker beat -l info
+
 # Run pre-commit hooks against all files
 precommit:
     pre-commit run --all-files
