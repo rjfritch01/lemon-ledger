@@ -12,12 +12,14 @@ from tenacity import (
 
 from lemon_ledger.clients.envelope import parse_list_envelope
 from lemon_ledger.clients.exceptions import (
-    BlockscoutResponseError,
-    BlockscoutTransientError,
-    BlockscoutWindowExceeded,
+    ChainFatalError,
+    ChainRateLimited,
+    ChainRequestError,
+    ChainWindowExceeded,
 )
 from lemon_ledger.clients.rate_limit import RateLimiter
 from lemon_ledger.config import Settings
+from lemon_ledger.domain.chains import Chain
 
 _ETHERSCAN_MAX_RESULTS = 10_000
 
@@ -29,6 +31,8 @@ class BlockscoutClient:
     and timeouts.  The rate_limiter is shared across instances for the same
     host so chains have independent buckets.
     """
+
+    chain: Chain = Chain.LEMONCHAIN
 
     def __init__(
         self,
@@ -57,9 +61,9 @@ class BlockscoutClient:
         try:
             resp = self._http.get(self._base_url, params=params)
         except httpx.TimeoutException as exc:
-            raise BlockscoutTransientError(f"Request timed out: {exc}") from exc
+            raise ChainRequestError(f"Request timed out: {exc}") from exc
         except httpx.TransportError as exc:
-            raise BlockscoutTransientError(f"Transport error: {exc}") from exc
+            raise ChainRequestError(f"Transport error: {exc}") from exc
 
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
@@ -68,20 +72,20 @@ class BlockscoutClient:
                     time.sleep(float(retry_after))
                 except ValueError:
                     pass
-            raise BlockscoutTransientError("Rate limited (HTTP 429)")
+            raise ChainRateLimited("Rate limited (HTTP 429)")
 
         if resp.status_code >= 500:
-            raise BlockscoutTransientError(f"Server error: HTTP {resp.status_code}")
+            raise ChainRequestError(f"Server error: HTTP {resp.status_code}")
 
         if resp.status_code >= 400:
-            raise BlockscoutResponseError(f"Client error: HTTP {resp.status_code}")
+            raise ChainFatalError(f"Client error: HTTP {resp.status_code}")
 
         return resp.json()
 
     def _get(self, params: dict[str, str]) -> Any:
         """HTTP GET with exponential-backoff+jitter retry on transient errors."""
         for attempt in Retrying(
-            retry=retry_if_exception_type(BlockscoutTransientError),
+            retry=retry_if_exception_type(ChainRequestError),
             stop=stop_after_attempt(self._max_retries),
             wait=wait_exponential_jitter(initial=1, exp_base=2, max=60),
             reraise=True,
@@ -99,13 +103,13 @@ class BlockscoutClient:
     ) -> Iterator[dict[str, str]]:
         """Page/offset walk over the Etherscan-compatible list endpoints.
 
-        Stops when a short page is returned.  Raises BlockscoutWindowExceeded
+        Stops when a short page is returned.  Raises ChainWindowExceeded
         before requesting a page that would exceed the 10k result window.
         """
         page = 1
         while True:
             if page * self._page_size > _ETHERSCAN_MAX_RESULTS:
-                raise BlockscoutWindowExceeded(
+                raise ChainWindowExceeded(
                     f"Result window ({_ETHERSCAN_MAX_RESULTS}) exceeded at page {page} "
                     f"(page_size={self._page_size}). Narrow the block range."
                 )
@@ -130,12 +134,12 @@ class BlockscoutClient:
         """Return the current chain head as an integer block number."""
         payload = self._get({"module": "block", "action": "eth_block_number"})
         if not isinstance(payload, dict):
-            raise BlockscoutResponseError(
+            raise ChainFatalError(
                 f"Expected dict for eth_block_number, got {type(payload).__name__}"
             )
         result = payload.get("result")
         if not isinstance(result, str):
-            raise BlockscoutResponseError(
+            raise ChainFatalError(
                 f"Expected hex string for block number, got {type(result).__name__}"
             )
         return int(result, 16)
@@ -184,6 +188,26 @@ class BlockscoutClient:
             end_block,
             sort,
         )
+
+    def get_token_metadata(self, contract_address: str) -> dict[str, Any]:
+        """Fetch on-chain token metadata (symbol, decimals, name) for an ERC-20 contract.
+
+        Uses the Etherscan-compatible `token/getToken` endpoint.  Returns the
+        `result` dict directly.  Raises ChainFatalError if the endpoint returns
+        a non-dict result (e.g., the endpoint is unsupported on this node).
+        """
+        payload = self._get(
+            {"module": "token", "action": "getToken", "contractaddress": contract_address.lower()}
+        )
+        if not isinstance(payload, dict):
+            raise ChainFatalError(f"getToken: expected dict payload, got {type(payload).__name__}")
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise ChainFatalError(
+                f"getToken: result is {type(result).__name__!r} (expected dict); "
+                f"status={payload.get('status')!r} message={payload.get('message')!r}"
+            )
+        return result
 
     def get_logs(
         self,

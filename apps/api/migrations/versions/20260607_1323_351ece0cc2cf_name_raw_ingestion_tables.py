@@ -32,7 +32,7 @@ def upgrade() -> None:
     sa.Column('ingested_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('raw', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.CheckConstraint("chain IN ('lemonchain','bsc')", name='ck_raw_internal_txs_chain'),
-    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('wallet_id', 'tx_hash', 'trace_id', name='uq_raw_internal_txs_wallet_tx_trace')
     )
@@ -51,7 +51,7 @@ def upgrade() -> None:
     sa.Column('ingested_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('raw', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.CheckConstraint("chain IN ('lemonchain','bsc')", name='ck_raw_logs_chain'),
-    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('wallet_id', 'tx_hash', 'log_index', name='uq_raw_logs_wallet_tx_log')
     )
@@ -72,7 +72,7 @@ def upgrade() -> None:
     sa.Column('ingested_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('raw', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.CheckConstraint("chain IN ('lemonchain','bsc')", name='ck_raw_token_transfers_chain'),
-    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('wallet_id', 'tx_hash', 'log_index', name='uq_raw_token_transfers_wallet_tx_log')
     )
@@ -90,7 +90,7 @@ def upgrade() -> None:
     sa.Column('ingested_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('raw', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.CheckConstraint("chain IN ('lemonchain','bsc')", name='ck_raw_transactions_chain'),
-    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('wallet_id', 'tx_hash', name='uq_raw_transactions_wallet_tx')
     )

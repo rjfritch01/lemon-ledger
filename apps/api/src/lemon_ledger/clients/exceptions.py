@@ -1,14 +1,18 @@
-class BlockscoutError(Exception):
-    """Base for all Blockscout client errors."""
+class ChainClientError(Exception):
+    """Base for all chain client errors."""
 
 
-class BlockscoutTransientError(BlockscoutError):
-    """Retryable: 5xx, 429, timeouts, transport errors, rate-limit responses."""
+class ChainRequestError(ChainClientError):
+    """Retryable transient error: 5xx, timeouts, transport failures."""
 
 
-class BlockscoutResponseError(BlockscoutError):
+class ChainRateLimited(ChainRequestError):
+    """Rate-limited by the chain explorer (HTTP 429 or API-level limit)."""
+
+
+class ChainFatalError(ChainClientError):
     """Non-retryable: malformed envelope, unexpected 4xx."""
 
 
-class BlockscoutWindowExceeded(BlockscoutResponseError):
-    """Raised by the paginator when results would exceed the 10k Etherscan window."""
+class ChainWindowExceeded(ChainClientError):
+    """Result window exceeded — narrow the block range and retry."""

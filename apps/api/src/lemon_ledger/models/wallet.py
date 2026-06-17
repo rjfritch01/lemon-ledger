@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lemon_ledger.db.base import Base
+from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 from lemon_ledger.models._constraints import CHAIN_SQL
 
 _CHAINS = CHAIN_SQL
@@ -21,7 +21,7 @@ _ROLES = "role IN ('vest','live','stake','nft','cold','bridge','other')"
 _ADDR_LOWER = "address = lower(address)"
 
 
-class Wallet(Base):
+class Wallet(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "wallets"
     __table_args__ = (
         UniqueConstraint("user_id", "chain", "address", name="uq_wallets_user_chain_address"),
@@ -30,8 +30,7 @@ class Wallet(Base):
         CheckConstraint(_ADDR_LOWER, name="ck_wallets_address_lowercase"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     chain: Mapped[str] = mapped_column(Text)
     address: Mapped[str] = mapped_column(Text)
     name: Mapped[str | None] = mapped_column(Text, nullable=True)

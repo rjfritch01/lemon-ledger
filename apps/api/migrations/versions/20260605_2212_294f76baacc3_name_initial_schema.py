@@ -116,7 +116,7 @@ def upgrade() -> None:
             "type IN ('personal','s-corp','llc-passthrough','partnership','sole-prop')",
             name="ck_entities_type",
         ),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -134,8 +134,8 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "classification IN ('include','spam','pending-review')", name="ck_utc_classification"
         ),
-        sa.ForeignKeyConstraint(["token_id"], ["token_registry.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["token_id"], ["token_registry.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("user_id", "token_id"),
     )
     op.create_table(
@@ -159,7 +159,7 @@ def upgrade() -> None:
             "role IN ('vest','live','stake','nft','cold','bridge','other')", name="ck_wallets_role"
         ),
         sa.CheckConstraint("address = lower(address)", name="ck_wallets_address_lowercase"),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id", "chain", "address", name="uq_wallets_user_chain_address"),
     )
@@ -182,8 +182,8 @@ def upgrade() -> None:
             "classification IN ('initial-assignment','capital-contribution','sale','gift','loan','reassignment')",
             name="ck_wea_classification",
         ),
-        sa.ForeignKeyConstraint(["entity_id"], ["entities.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["wallet_id"], ["wallets.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["entity_id"], ["entities.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["wallet_id"], ["wallets.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(

@@ -4,21 +4,20 @@ from datetime import date, datetime
 from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lemon_ledger.db.base import Base
+from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 
 _ENTITY_TYPES = "type IN ('personal','s-corp','llc-passthrough','partnership','sole-prop')"
 _BASIS_METHODS = "default_basis_method IN ('fifo','hifo','specific-id')"
 
 
-class Entity(Base):
+class Entity(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "entities"
     __table_args__ = (
         CheckConstraint(_ENTITY_TYPES, name="ck_entities_type"),
         CheckConstraint(_BASIS_METHODS, name="ck_entities_default_basis_method"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     name: Mapped[str] = mapped_column(Text)
     type: Mapped[str] = mapped_column(Text)
     tax_id: Mapped[str | None] = mapped_column(Text, nullable=True)

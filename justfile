@@ -51,9 +51,13 @@ migrate:
 makemigration name="":
     cd apps/api && uv run alembic revision --autogenerate -m "{{name}}"
 
-# Run the test suite with coverage gate (>=80%)
+# Run the test suite with coverage gate (>=80%); integration tests excluded
 api-test:
     cd apps/api && uv run pytest tests/ -v
+
+# Run the live-network integration suite (no coverage gate; reruns absorb testnet blips)
+api-test-integration:
+    cd apps/api && uv run pytest tests/ -m integration --no-cov --reruns 2 -v
 
 # Run ruff linter + formatter check
 api-lint:
@@ -67,6 +71,14 @@ api-typecheck:
 api-security:
     cd apps/api && uv run bandit -c pyproject.toml -r src/lemon_ledger
     uvx semgrep --config tools/semgrep/no-transaction-sending.yml --error apps/
+
+# Start Celery worker (reads broker/backend from .env)
+api-worker:
+    cd apps/api && uv run celery -A lemon_ledger.worker worker -l info
+
+# Start Celery beat scheduler
+api-beat:
+    cd apps/api && uv run celery -A lemon_ledger.worker beat -l info
 
 # Run pre-commit hooks against all files
 precommit:

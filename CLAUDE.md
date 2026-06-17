@@ -1,0 +1,69 @@
+# Lemon Ledger — Project Conventions
+
+## What this project is
+Lemon Ledger is a **read-only** cryptocurrency tax and portfolio tracker for the
+LEMX ecosystem across Lemonchain (L2) and BNB Smart Chain (BSC). It produces US
+tax forms: Form 8949, Schedule D, and Schedule 1 Line 8z. It NEVER signs or sends
+transactions. "Read-only" is a hard, build-enforced constraint.
+
+## Locked architectural invariants (never violate)
+- **NUMERIC, never float**, for any token or monetary value. Schema-wide law.
+- **String columns + CHECK constraints, never native PostgreSQL enums.**
+- **All schema changes via Alembic migrations only.** Never `create_all`.
+  Migrations are reversible and additive. CI enforces a single migration head.
+- **UUIDv7 primary keys, generated app-side**, via `uuid_utils.compat.uuid7`
+  (Python 3.12 has no stdlib uuid7; do not use `uuid.uuid4`).
+- **`timestamptz`, UTC, everywhere.**
+- **`ON DELETE RESTRICT` is the FK default.** Soft-delete via `is_active`.
+  Deviating to CASCADE requires an explicit, justified, per-FK decision.
+- **No transaction signing anywhere.** Semgrep blocks `send_transaction`,
+  `send_raw_transaction`, `.transact()`, `sign_transaction`.
+- **Migrations run as a Railway release step, never at app startup.**
+- **Schema changes via feature branch + PR.** Four CI checks (Lint, Type Check,
+  Security Scan, Test) must pass before merge.
+
+## Tech stack
+- Python 3.12; FastAPI; SQLAlchemy 2.0 (async); Alembic; Celery; Redis 7;
+  Postgres 16.
+- Tooling: uv; Ruff (format + lint); mypy (strict); Bandit; Semgrep; pre-commit.
+- Testing: Pytest; Testcontainers (real Postgres); real Redis for rate-limiter
+  and lock tests (fakeredis is incompatible with Lua eval); 80% coverage gate.
+
+## Repo layout
+- `apps/api/src/lemon_ledger/` (src layout).
+- `Base` lives in `lemon_ledger.db.base`.
+- Domain logic in `lemon_ledger/domain/`.
+- Table classes in `lemon_ledger/models/`, each registered in
+  `models/__init__.py` so Alembic autogenerate sees them.
+
+## How we work
+- **Architecture-first, one decision at a time.** Recommend with rationale,
+  confirm, then implement. Code without an accompanying actionable prompt is not
+  actionable.
+- **Serial-only (no parallel work) for:** tax math, lot engine logic, classifier
+  semantics, schema changes, wallet authorization.
+- **Parallel-safe** work uses git worktrees on isolated feature branches.
+- **PR discipline:** all changes via feature branch + PR; four required CI checks;
+  `enforce_admins: false`.
+
+## Tax / domain rules (money-relevant — get these right)
+- **Per-wallet lot pooling is mandatory** under Rev. Proc. 2024-28 (effective
+  Jan 1, 2025). Pool key is `(wallet_id, canonical_asset)`. Per-entity pooling is
+  WRONG and overridden.
+- **Average Cost basis is not permitted** for US crypto holdings. It is
+  informational-only and removed from `entities.default_basis_method`.
+  HIFO / LIFO / Min-Tax are Specific Identification strategies and require
+  `selection_strategy` and `selected_at` for audit defensibility.
+- **Bridge taxability is unsettled.** Confirmed bridges are non-taxable
+  relocations; unmatched/rejected pairs fall back to taxable. Per-entity
+  `bridge_treatment` defaults to `relocate`; `jurisdiction` defaults to US.
+- **BSC endpoint is `api.etherscan.io/v2/api` with `chainid=56`.**
+  `api.bscscan.com` was deprecated December 2025 — never use it.
+- **WLEMX must be in `token_asset_membership`** under the LEMX logical asset so
+  wrap/unwrap is a genuine no-op.
+- **`InsufficientLotsError` surfaces hard** to the gate. Never fabricate phantom
+  basis.
+- **Conservative defaults on financially-consequential classifications:** flag
+  `pending` rather than guessing. Unresolved fees flag `pending`, never zero-basis.
+- **Burn addresses never auto-book a capital loss.** Candidate burn addresses
+  require trust-gated discovery.

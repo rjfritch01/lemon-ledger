@@ -87,3 +87,10 @@ async def test_entity_check_constraint_values(
     db_session.add(entity)
     await db_session.flush()
     assert getattr(entity, field) == value
+
+
+async def test_pk_default_is_uuidv7(db_session: AsyncSession) -> None:
+    user = User(clerk_user_id=f"clerk_{uuid.uuid4().hex}")
+    db_session.add(user)
+    await db_session.flush()
+    assert user.id.version == 7

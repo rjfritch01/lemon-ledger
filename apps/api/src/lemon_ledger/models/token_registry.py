@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Any
 
@@ -16,7 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lemon_ledger.db.base import Base
+from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 
 _CHAINS = "chain IN ('lemonchain','bsc')"
 _TIERS = "tier IN (1,2)"
@@ -27,7 +26,7 @@ _CATEGORIES = (
 )
 
 
-class TokenRegistry(Base):
+class TokenRegistry(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "token_registry"
     __table_args__ = (
         UniqueConstraint("chain", "contract_address", name="uq_token_registry_chain_address"),
@@ -35,8 +34,6 @@ class TokenRegistry(Base):
         CheckConstraint(_TIERS, name="ck_token_registry_tier"),
         CheckConstraint(_CATEGORIES, name="ck_token_registry_category"),
     )
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     chain: Mapped[str] = mapped_column(Text)
     contract_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     symbol: Mapped[str] = mapped_column(Text)

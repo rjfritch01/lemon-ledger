@@ -4,7 +4,7 @@ from datetime import date, datetime
 from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lemon_ledger.db.base import Base
+from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 
 _CLASSIFICATIONS = (
     "classification IN ("
@@ -12,7 +12,7 @@ _CLASSIFICATIONS = (
 )
 
 
-class WalletEntityAssignment(Base):
+class WalletEntityAssignment(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "wallet_entity_assignments"
     __table_args__ = (
         CheckConstraint(_CLASSIFICATIONS, name="ck_wea_classification"),
@@ -24,9 +24,8 @@ class WalletEntityAssignment(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    wallet_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("wallets.id", ondelete="CASCADE"))
-    entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    wallet_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("wallets.id", ondelete="RESTRICT"))
+    entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("entities.id", ondelete="RESTRICT"))
     effective_from: Mapped[date] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     classification: Mapped[str] = mapped_column(Text)
