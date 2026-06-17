@@ -215,3 +215,36 @@ def test_api_key_appended_to_params() -> None:
     )
     list(client.get_transactions(_ADDR))
     assert "my-secret-key" in str(route.calls[0].request.url)
+
+
+# ── get_token_metadata ────────────────────────────────────────────────────────
+
+
+@respx.mock
+def test_get_token_metadata_returns_dict() -> None:
+    meta = {"symbol": "WLEMX", "decimals": "18", "name": "Wrapped LEMX"}
+    respx.get(BASE_URL).mock(return_value=httpx.Response(200, json=_ok(meta)))
+    client = _make_client()
+    result = client.get_token_metadata(_ADDR)
+    assert result["symbol"] == "WLEMX"
+    assert result["decimals"] == "18"
+
+
+@respx.mock
+def test_get_token_metadata_non_dict_result_raises() -> None:
+    respx.get(BASE_URL).mock(
+        return_value=httpx.Response(200, json={"status": "0", "message": "No data", "result": None})
+    )
+    client = _make_client()
+    with pytest.raises(BlockscoutResponseError):
+        client.get_token_metadata(_ADDR)
+
+
+@respx.mock
+def test_get_token_metadata_address_lowercased() -> None:
+    route = respx.get(BASE_URL).mock(
+        return_value=httpx.Response(200, json=_ok({"symbol": "X", "decimals": "18"}))
+    )
+    client = _make_client()
+    client.get_token_metadata("0xDEADBEEFdeadbeefDEADBEEFdeadbeefDEADBEEF")
+    assert "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" in str(route.calls[0].request.url)

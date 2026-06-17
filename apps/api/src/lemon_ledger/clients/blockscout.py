@@ -185,6 +185,28 @@ class BlockscoutClient:
             sort,
         )
 
+    def get_token_metadata(self, contract_address: str) -> dict[str, Any]:
+        """Fetch on-chain token metadata (symbol, decimals, name) for an ERC-20 contract.
+
+        Uses the Etherscan-compatible `token/getToken` endpoint.  Returns the
+        `result` dict directly.  Raises BlockscoutResponseError if the endpoint
+        returns a non-dict result (e.g., the endpoint is unsupported on this node).
+        """
+        payload = self._get(
+            {"module": "token", "action": "getToken", "contractaddress": contract_address.lower()}
+        )
+        if not isinstance(payload, dict):
+            raise BlockscoutResponseError(
+                f"getToken: expected dict payload, got {type(payload).__name__}"
+            )
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise BlockscoutResponseError(
+                f"getToken: result is {type(result).__name__!r} (expected dict); "
+                f"status={payload.get('status')!r} message={payload.get('message')!r}"
+            )
+        return result
+
     def get_logs(
         self,
         address: str,

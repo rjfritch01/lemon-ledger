@@ -51,9 +51,13 @@ migrate:
 makemigration name="":
     cd apps/api && uv run alembic revision --autogenerate -m "{{name}}"
 
-# Run the test suite with coverage gate (>=80%)
+# Run the test suite with coverage gate (>=80%); integration tests excluded
 api-test:
     cd apps/api && uv run pytest tests/ -v
+
+# Run the live-network integration suite (no coverage gate; reruns absorb testnet blips)
+api-test-integration:
+    cd apps/api && uv run pytest tests/ -m integration --no-cov --reruns 2 -v
 
 # Run ruff linter + formatter check
 api-lint:

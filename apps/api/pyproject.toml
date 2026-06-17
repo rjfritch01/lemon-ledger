@@ -31,6 +31,7 @@ dev = [
     "mypy>=1.11",
     "sqlalchemy[mypy]>=2.0.30",
     "bandit>=1.7",
+    "pytest-rerunfailures>=14.0",
 ]
 
 [project.scripts]
@@ -68,7 +69,10 @@ exclude_dirs = ["tests", "migrations"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "--cov=src/lemon_ledger --cov-report=term-missing --cov-fail-under=80 --cov-config=pyproject.toml"
+addopts = "--cov=src/lemon_ledger --cov-report=term-missing --cov-fail-under=80 --cov-config=pyproject.toml -m 'not integration'"
+markers = [
+    "integration: live-network integration tests, excluded from the unit run",
+]
 
 [tool.coverage.run]
 source_pkgs = ["lemon_ledger"]
