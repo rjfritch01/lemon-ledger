@@ -175,8 +175,10 @@ async def test_downgrade_drops_raw_tables(raw_db_url: str) -> None:
 
     # Alembic's env.py calls asyncio.run() internally; run it in a thread to
     # avoid "cannot be called from a running event loop" from pytest-asyncio.
+    # Target the revision just before raw tables (294f76baacc3 = initial_schema)
+    # so that any migrations layered on top don't affect this test.
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, lambda: command.downgrade(cfg, "-1"))
+    await loop.run_in_executor(None, lambda: command.downgrade(cfg, "294f76baacc3"))
 
     engine = create_async_engine(raw_db_url)
     async with engine.connect() as conn:
