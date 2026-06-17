@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from lemon_ledger.clients.exceptions import BlockscoutResponseError
+from lemon_ledger.clients.exceptions import ChainFatalError
 from lemon_ledger.ingestion.mappers import map_internal_tx, map_token_transfer, map_transaction
 
 _WID = uuid.uuid4()
@@ -85,12 +85,12 @@ def test_map_internal_tx_alt_field_name() -> None:
 
 def test_map_internal_tx_missing_trace_id_raises() -> None:
     rec = {k: v for k, v in _IT_REC.items() if k != "traceId"}
-    with pytest.raises(BlockscoutResponseError, match="trace_id"):
+    with pytest.raises(ChainFatalError, match="trace_id"):
         map_internal_tx(_WID, _CHAIN, rec)
 
 
 def test_map_internal_tx_empty_trace_id_raises() -> None:
     rec = dict(_IT_REC)
     rec["traceId"] = ""
-    with pytest.raises(BlockscoutResponseError):
+    with pytest.raises(ChainFatalError):
         map_internal_tx(_WID, _CHAIN, rec)

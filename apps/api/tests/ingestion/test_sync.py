@@ -17,23 +17,26 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from testcontainers.postgres import PostgresContainer
 
-from lemon_ledger.clients.exceptions import BlockscoutWindowExceeded
+from lemon_ledger.clients.exceptions import ChainWindowExceeded
 from lemon_ledger.db.base import Base
+from lemon_ledger.domain.chains import Chain
 from lemon_ledger.ingestion.sync import sync_wallet
 from lemon_ledger.models.raw import RawTransaction
 from lemon_ledger.models.user import User
 from lemon_ledger.models.wallet import Wallet
 
-# ── FakeBlockscoutClient ──────────────────────────────────────────────────────
+# ── FakeChainClient ───────────────────────────────────────────────────────────
 
 
-class FakeBlockscoutClient:
+class FakeChainClient:
     """Stub that serves canned pages without network access.
 
     - latest_block: returned by get_latest_block()
     - txs / transfers / internals: lists of record dicts per address
     - window_limit: if a range is wider than this many blocks, raise WindowExceeded
     """
+
+    chain: Chain = Chain.LEMONCHAIN
 
     def __init__(
         self,
@@ -54,7 +57,7 @@ class FakeBlockscoutClient:
 
     def _check_window(self, start: int, end: int) -> None:
         if self._window_limit is not None and (end - start + 1) > self._window_limit:
-            raise BlockscoutWindowExceeded(
+            raise ChainWindowExceeded(
                 f"Range {start}..{end} exceeds window limit {self._window_limit}"
             )
 
@@ -173,7 +176,7 @@ def _make_internal(n: int, block: int = 100) -> dict[str, str]:
 
 
 def test_sync_wallet_advances_cursor(session: Session, wallet: Wallet) -> None:
-    client = FakeBlockscoutClient(
+    client = FakeChainClient(
         latest_block=1000,
         txs=[_make_tx(1)],
         transfers=[_make_transfer(1)],
@@ -188,7 +191,7 @@ def test_sync_wallet_advances_cursor(session: Session, wallet: Wallet) -> None:
 
 
 def test_sync_wallet_row_counts(session: Session, wallet: Wallet) -> None:
-    client = FakeBlockscoutClient(
+    client = FakeChainClient(
         latest_block=500,
         txs=[_make_tx(1), _make_tx(2)],
         transfers=[_make_transfer(1)],
@@ -202,7 +205,7 @@ def test_sync_wallet_row_counts(session: Session, wallet: Wallet) -> None:
 
 
 def test_sync_wallet_empty_no_rows_cursor_advances(session: Session, wallet: Wallet) -> None:
-    client = FakeBlockscoutClient(latest_block=500)
+    client = FakeChainClient(latest_block=500)
     result = sync_wallet(session, client, wallet, confirmations=0, chunk_blocks=100_000)
 
     assert result.transactions == 0
@@ -217,7 +220,7 @@ def test_sync_wallet_already_at_head_noop(session: Session, wallet: Wallet) -> N
     wallet.last_synced_block = 988
     session.flush()
 
-    client = FakeBlockscoutClient(latest_block=1000, txs=[_make_tx(1)])
+    client = FakeChainClient(latest_block=1000, txs=[_make_tx(1)])
     result = sync_wallet(session, client, wallet, confirmations=12, chunk_blocks=100_000)
 
     # ceiling = 1000 - 12 = 988 <= cursor 988: no-op
@@ -227,7 +230,7 @@ def test_sync_wallet_already_at_head_noop(session: Session, wallet: Wallet) -> N
 
 def test_sync_wallet_idempotent(session: Session, wallet: Wallet) -> None:
     """Running sync twice yields the same row count — no duplicates."""
-    client = FakeBlockscoutClient(
+    client = FakeChainClient(
         latest_block=500,
         txs=[_make_tx(1), _make_tx(2)],
         transfers=[_make_transfer(1)],
@@ -251,7 +254,7 @@ def test_sync_wallet_idempotent(session: Session, wallet: Wallet) -> None:
 
 def test_sync_wallet_window_subdivision(session: Session, wallet: Wallet) -> None:
     """When the client raises WindowExceeded, the range is halved and retried."""
-    client = FakeBlockscoutClient(
+    client = FakeChainClient(
         latest_block=200,
         txs=[_make_tx(1, block=100)],
         transfers=[],

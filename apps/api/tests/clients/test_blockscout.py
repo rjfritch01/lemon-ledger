@@ -6,9 +6,10 @@ import respx
 
 from lemon_ledger.clients.blockscout import BlockscoutClient
 from lemon_ledger.clients.exceptions import (
-    BlockscoutResponseError,
-    BlockscoutTransientError,
-    BlockscoutWindowExceeded,
+    ChainFatalError,
+    ChainRateLimited,
+    ChainRequestError,
+    ChainWindowExceeded,
 )
 from lemon_ledger.clients.rate_limit import NullRateLimiter
 
@@ -42,10 +43,10 @@ def test_get_200_returns_json() -> None:
 
 
 @respx.mock
-def test_get_429_raises_transient() -> None:
+def test_get_429_raises_rate_limited() -> None:
     respx.get(BASE_URL).mock(return_value=httpx.Response(429))
     client = _make_client()
-    with pytest.raises(BlockscoutTransientError):
+    with pytest.raises(ChainRateLimited):
         client._get({"module": "account", "action": "txlist"})
 
 
@@ -53,7 +54,7 @@ def test_get_429_raises_transient() -> None:
 def test_get_500_raises_transient() -> None:
     respx.get(BASE_URL).mock(return_value=httpx.Response(500))
     client = _make_client()
-    with pytest.raises(BlockscoutTransientError):
+    with pytest.raises(ChainRequestError):
         client._get({"module": "account", "action": "txlist"})
 
 
@@ -61,7 +62,7 @@ def test_get_500_raises_transient() -> None:
 def test_get_4xx_raises_response_error() -> None:
     respx.get(BASE_URL).mock(return_value=httpx.Response(404))
     client = _make_client()
-    with pytest.raises(BlockscoutResponseError):
+    with pytest.raises(ChainFatalError):
         client._get({"module": "account", "action": "txlist"})
 
 
@@ -69,7 +70,7 @@ def test_get_4xx_raises_response_error() -> None:
 def test_get_timeout_raises_transient() -> None:
     respx.get(BASE_URL).mock(side_effect=httpx.TimeoutException("timed out"))
     client = _make_client()
-    with pytest.raises(BlockscoutTransientError, match="timed out"):
+    with pytest.raises(ChainRequestError, match="timed out"):
         client._get({"module": "account", "action": "txlist"})
 
 
@@ -77,7 +78,7 @@ def test_get_timeout_raises_transient() -> None:
 def test_get_transport_error_raises_transient() -> None:
     respx.get(BASE_URL).mock(side_effect=httpx.ConnectError("connection refused"))
     client = _make_client()
-    with pytest.raises(BlockscoutTransientError, match="Transport"):
+    with pytest.raises(ChainRequestError, match="Transport"):
         client._get({"module": "account", "action": "txlist"})
 
 
@@ -86,7 +87,7 @@ def test_get_429_with_retry_after_header() -> None:
     # Retry-After header is honoured (sleep is called) — just verify no crash.
     respx.get(BASE_URL).mock(return_value=httpx.Response(429, headers={"Retry-After": "0"}))
     client = _make_client()
-    with pytest.raises(BlockscoutTransientError):
+    with pytest.raises(ChainRequestError):
         client._get({"module": "account", "action": "txlist"})
 
 
@@ -104,7 +105,7 @@ def test_get_latest_block_parses_hex() -> None:
 def test_get_latest_block_non_string_raises() -> None:
     respx.get(BASE_URL).mock(return_value=httpx.Response(200, json={"result": 12345}))
     client = _make_client()
-    with pytest.raises(BlockscoutResponseError):
+    with pytest.raises(ChainFatalError):
         client.get_latest_block()
 
 
@@ -150,7 +151,7 @@ def test_pagination_empty_first_page() -> None:
     assert result == []
 
 
-# ── BlockscoutWindowExceeded ───────────────────────────────────────────────────
+# ── ChainWindowExceeded ───────────────────────────────────────────────────
 
 
 @respx.mock
@@ -158,7 +159,7 @@ def test_window_exceeded_raises_before_oversized_page() -> None:
     # page_size=10_001 means page 1 would already exceed the 10k window
     respx.get(BASE_URL).mock(return_value=httpx.Response(200, json=_ok([])))
     client = _make_client(page_size=10_001)
-    with pytest.raises(BlockscoutWindowExceeded):
+    with pytest.raises(ChainWindowExceeded):
         list(client.get_transactions(_ADDR))
 
 
@@ -169,7 +170,7 @@ def test_window_exceeded_after_ten_full_pages() -> None:
     full_page: list[dict[str, str]] = [{"hash": str(i), "value": "0"} for i in range(1000)]
     respx.get(BASE_URL).mock(return_value=httpx.Response(200, json=_ok(full_page)))
     client = _make_client(page_size=1000)
-    with pytest.raises(BlockscoutWindowExceeded):
+    with pytest.raises(ChainWindowExceeded):
         list(client.get_transactions(_ADDR))
 
 
@@ -236,7 +237,7 @@ def test_get_token_metadata_non_dict_result_raises() -> None:
         return_value=httpx.Response(200, json={"status": "0", "message": "No data", "result": None})
     )
     client = _make_client()
-    with pytest.raises(BlockscoutResponseError):
+    with pytest.raises(ChainFatalError):
         client.get_token_metadata(_ADDR)
 
 

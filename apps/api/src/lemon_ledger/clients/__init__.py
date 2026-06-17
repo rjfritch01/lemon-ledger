@@ -1,6 +1,9 @@
+from lemon_ledger.clients.base import ChainClient as ChainClient
 from lemon_ledger.clients.blockscout import BlockscoutClient as BlockscoutClient
 from lemon_ledger.clients.blockscout import build_blockscout_client as build_blockscout_client
-from lemon_ledger.clients.exceptions import BlockscoutError as BlockscoutError
-from lemon_ledger.clients.exceptions import BlockscoutResponseError as BlockscoutResponseError
-from lemon_ledger.clients.exceptions import BlockscoutTransientError as BlockscoutTransientError
-from lemon_ledger.clients.exceptions import BlockscoutWindowExceeded as BlockscoutWindowExceeded
+from lemon_ledger.clients.exceptions import ChainClientError as ChainClientError
+from lemon_ledger.clients.exceptions import ChainFatalError as ChainFatalError
+from lemon_ledger.clients.exceptions import ChainRateLimited as ChainRateLimited
+from lemon_ledger.clients.exceptions import ChainRequestError as ChainRequestError
+from lemon_ledger.clients.exceptions import ChainWindowExceeded as ChainWindowExceeded
+from lemon_ledger.clients.registry import build_chain_client as build_chain_client

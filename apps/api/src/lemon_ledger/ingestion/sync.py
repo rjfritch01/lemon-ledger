@@ -4,38 +4,20 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any
 
 import structlog
 from sqlalchemy import literal_column
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from lemon_ledger.clients.exceptions import BlockscoutWindowExceeded
+from lemon_ledger.clients.base import ChainClient
+from lemon_ledger.clients.exceptions import ChainWindowExceeded
 from lemon_ledger.ingestion.mappers import map_internal_tx, map_token_transfer, map_transaction
 from lemon_ledger.models.raw import RawInternalTx, RawTokenTransfer, RawTransaction
 from lemon_ledger.models.wallet import Wallet
-
-
-class SyncClient(Protocol):
-    """Minimal interface required by sync_wallet — satisfied by BlockscoutClient and fakes."""
-
-    def get_latest_block(self) -> int: ...
-
-    def get_transactions(
-        self, address: str, *, start_block: int = ..., end_block: int | None = ..., sort: str = ...
-    ) -> Iterator[dict[str, str]]: ...
-
-    def get_token_transfers(
-        self, address: str, *, start_block: int = ..., end_block: int | None = ..., sort: str = ...
-    ) -> Iterator[dict[str, str]]: ...
-
-    def get_internal_transactions(
-        self, address: str, *, start_block: int = ..., end_block: int | None = ..., sort: str = ...
-    ) -> Iterator[dict[str, str]]: ...
 
 
 @dataclass(frozen=True)
@@ -68,7 +50,7 @@ def bulk_upsert(
 
 def _ingest_chunk(
     session: Session,
-    client: SyncClient,
+    client: ChainClient,
     wallet: Wallet,
     start: int,
     end: int,
@@ -90,7 +72,7 @@ def _ingest_chunk(
                 wallet.address, start_block=start, end_block=end
             )
         ]
-    except BlockscoutWindowExceeded:
+    except ChainWindowExceeded:
         if end <= start:
             raise
         mid = (start + end) // 2
@@ -112,7 +94,7 @@ def _ingest_chunk(
 
 def sync_wallet(
     session: Session,
-    client: SyncClient,
+    client: ChainClient,
     wallet: Wallet,
     *,
     confirmations: int,

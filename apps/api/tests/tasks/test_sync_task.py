@@ -1,8 +1,8 @@
 """Task-level tests.
 
 Lock-skip and not-found use a real Redis (Testcontainers); the happy-path
-monkeypatches build_blockscout_client to inject a FakeBlockscoutClient so
-no network calls are made.  All three tests require Docker.
+uses _run_sync with a client_factory injection so no network calls are made.
+All three tests require Docker.
 """
 
 from __future__ import annotations
@@ -19,15 +19,19 @@ from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
+from lemon_ledger.clients.base import ChainClient
+from lemon_ledger.config import Settings
 from lemon_ledger.db.base import Base
+from lemon_ledger.domain.chains import Chain
 from lemon_ledger.models.user import User
 from lemon_ledger.models.wallet import Wallet
-from lemon_ledger.tasks.sync import sync_wallet_task, wallet_sync_lock
+from lemon_ledger.tasks.sync import _run_sync, sync_wallet_task, wallet_sync_lock
+from lemon_ledger.worker import Resources
 
-# ── FakeBlockscoutClient (imported from ingestion tests via shared helper) ─────
 
+class _FakeChainClient:
+    chain: Chain = Chain.LEMONCHAIN
 
-class _FakeClient:
     def __init__(self) -> None:
         self._latest_block = 500
 
@@ -104,6 +108,17 @@ def seeded_wallet(task_maker: sessionmaker[Session]) -> Generator[Wallet, None, 
         session.commit()
 
 
+def _make_resources(engine: Any, maker: Any, redis: Any) -> Resources:
+    import httpx
+
+    return Resources(
+        engine=engine,
+        sessionmaker=maker,
+        redis=redis,
+        http=httpx.Client(),
+    )
+
+
 # ── wallet_sync_lock tests ────────────────────────────────────────────────────
 
 
@@ -125,6 +140,43 @@ def test_lock_acquired_then_released(redis_client: Any) -> None:
     assert not redis_client.exists(f"lock:sync:{wallet_id}")
 
 
+# ── _run_sync unit tests ──────────────────────────────────────────────────────
+
+
+def test_run_sync_happy_path(
+    seeded_wallet: Wallet,
+    task_maker: sessionmaker[Session],
+    redis_client: Any,
+    task_engine: Any,
+) -> None:
+    """_run_sync with injected client_factory — no network, no patch required."""
+    res = _make_resources(task_engine, task_maker, redis_client)
+    settings = Settings()
+
+    def fake_factory(chain: Chain, r: Resources, s: Settings) -> ChainClient:
+        return _FakeChainClient()
+
+    result = _run_sync(str(seeded_wallet.id), None, res, settings, client_factory=fake_factory)
+    assert result.wallet_id == seeded_wallet.id
+    assert "transactions" in result.__dataclass_fields__
+
+
+def test_run_sync_not_found(
+    task_maker: sessionmaker[Session],
+    redis_client: Any,
+    task_engine: Any,
+) -> None:
+    res = _make_resources(task_engine, task_maker, redis_client)
+    settings = Settings()
+    bad_id = str(uuid.uuid4())
+
+    def fake_factory(chain: Chain, r: Resources, s: Settings) -> ChainClient:
+        return _FakeChainClient()
+
+    with pytest.raises(ValueError, match="not found or inactive"):
+        _run_sync(bad_id, None, res, settings, client_factory=fake_factory)
+
+
 # ── sync_wallet_task tests ────────────────────────────────────────────────────
 
 
@@ -132,20 +184,12 @@ def test_sync_wallet_task_not_found(
     task_maker: sessionmaker[Session], redis_client: Any, task_engine: Any
 ) -> None:
     bad_id = str(uuid.uuid4())
-    from lemon_ledger.worker import Resources
-
-    fake_resources = Resources(
-        engine=task_engine,
-        sessionmaker=task_maker,
-        redis=redis_client,
-        http=__import__("httpx").Client(),
-    )
-
-    from lemon_ledger.config import Settings
+    fake_resources = _make_resources(task_engine, task_maker, redis_client)
 
     with (
         patch("lemon_ledger.tasks.sync.resources") as mock_res,
         patch("lemon_ledger.tasks.sync.get_settings", return_value=Settings()),
+        patch("lemon_ledger.tasks.sync.build_chain_client", return_value=_FakeChainClient()),
     ):
         mock_res.ensure.return_value = fake_resources
         with pytest.raises(ValueError, match="not found or inactive"):
@@ -158,23 +202,14 @@ def test_sync_wallet_task_happy_path(
     redis_client: Any,
     task_engine: Any,
 ) -> None:
-    """Happy-path: monkeypatch build_blockscout_client to avoid network."""
-    from lemon_ledger.config import Settings
-    from lemon_ledger.worker import Resources
-
-    fake_resources = Resources(
-        engine=task_engine,
-        sessionmaker=task_maker,
-        redis=redis_client,
-        http=__import__("httpx").Client(),
-    )
-
+    """Happy-path: inject client_factory via build_chain_client patch."""
+    fake_resources = _make_resources(task_engine, task_maker, redis_client)
     settings = Settings()
 
     with (
         patch("lemon_ledger.tasks.sync.resources") as mock_res,
         patch("lemon_ledger.tasks.sync.get_settings", return_value=settings),
-        patch("lemon_ledger.tasks.sync.build_blockscout_client", return_value=_FakeClient()),
+        patch("lemon_ledger.tasks.sync.build_chain_client", return_value=_FakeChainClient()),
     ):
         mock_res.ensure.return_value = fake_resources
         result = sync_wallet_task.apply(args=[str(seeded_wallet.id)]).get(propagate=True)

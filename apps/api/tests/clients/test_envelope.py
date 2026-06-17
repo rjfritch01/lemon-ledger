@@ -1,7 +1,7 @@
 import pytest
 
 from lemon_ledger.clients.envelope import parse_list_envelope
-from lemon_ledger.clients.exceptions import BlockscoutResponseError, BlockscoutTransientError
+from lemon_ledger.clients.exceptions import ChainFatalError, ChainRateLimited
 
 # ── status == "1" ─────────────────────────────────────────────────────────────
 
@@ -23,13 +23,13 @@ def test_status1_empty_list_returns_empty() -> None:
 
 def test_status1_non_list_raises_response_error() -> None:
     payload = {"status": "1", "message": "OK", "result": "some string"}
-    with pytest.raises(BlockscoutResponseError, match="expected list"):
+    with pytest.raises(ChainFatalError, match="expected list"):
         parse_list_envelope(payload)
 
 
 def test_status1_result_is_dict_raises() -> None:
     payload = {"status": "1", "message": "OK", "result": {"foo": "bar"}}
-    with pytest.raises(BlockscoutResponseError):
+    with pytest.raises(ChainFatalError):
         parse_list_envelope(payload)
 
 
@@ -83,7 +83,7 @@ def test_result_str_startswith_no_returns_empty() -> None:
 )
 def test_rate_limit_raises_transient(message: str, result: str) -> None:
     payload = {"status": "0", "message": message, "result": result}
-    with pytest.raises(BlockscoutTransientError):
+    with pytest.raises(ChainRateLimited):
         parse_list_envelope(payload)
 
 
@@ -92,10 +92,10 @@ def test_rate_limit_raises_transient(message: str, result: str) -> None:
 
 def test_unrecognised_status0_raises_response_error() -> None:
     payload = {"status": "0", "message": "Something went wrong", "result": "error"}
-    with pytest.raises(BlockscoutResponseError):
+    with pytest.raises(ChainFatalError):
         parse_list_envelope(payload)
 
 
 def test_non_dict_payload_raises() -> None:
-    with pytest.raises(BlockscoutResponseError, match="Expected dict"):
+    with pytest.raises(ChainFatalError, match="Expected dict"):
         parse_list_envelope(["not", "a", "dict"])
