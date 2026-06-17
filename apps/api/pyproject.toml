@@ -17,6 +17,7 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "typer>=0.12",
     "structlog>=24.1",
+    "uuid-utils>=0.16.1",
 ]
 
 [dependency-groups]
@@ -70,7 +71,7 @@ testpaths = ["tests"]
 addopts = "--cov=src/lemon_ledger --cov-report=term-missing --cov-fail-under=80 --cov-config=pyproject.toml"
 
 [tool.coverage.run]
-source = ["src/lemon_ledger"]
+source_pkgs = ["lemon_ledger"]
 omit = ["*/migrations/*"]
 
 [tool.coverage.report]

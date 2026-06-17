@@ -57,4 +57,14 @@ jobs:
       - run: uv sync
         working-directory: apps/api
       - uses: extractions/setup-just@v2
+      - name: Assert single Alembic migration head
+        run: |
+          cd apps/api
+          heads=$(uv run alembic heads | sed '/^$/d' | wc -l | tr -d ' ')
+          if [ "$heads" != "1" ]; then
+            echo "::error::Expected exactly 1 Alembic head, found $heads"
+            uv run alembic heads
+            exit 1
+          fi
+          echo "Single migration head confirmed."
       - run: just api-test

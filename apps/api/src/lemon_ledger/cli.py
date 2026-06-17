@@ -89,7 +89,6 @@ def wallet_add(
 
     with worker_session(maker) as session:
         w = Wallet(
-            id=uuid.uuid4(),
             user_id=uuid.UUID(user_id),
             chain=chain,
             address=address,
@@ -101,7 +100,6 @@ def wallet_add(
         session.flush()
 
         assignment = WalletEntityAssignment(
-            id=uuid.uuid4(),
             wallet_id=w.id,
             entity_id=uuid.UUID(entity_id),
             effective_from=date.today(),

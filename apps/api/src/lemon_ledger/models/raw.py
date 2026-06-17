@@ -18,16 +18,15 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lemon_ledger.db.base import Base
+from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 from lemon_ledger.models._constraints import CHAIN_SQL
 
 
-class RawRecordMixin:
+class RawRecordMixin(UUIDPrimaryKeyMixin):
     """Columns shared by all four raw ingestion tables."""
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     wallet_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("wallets.id", ondelete="CASCADE"),
+        ForeignKey("wallets.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
