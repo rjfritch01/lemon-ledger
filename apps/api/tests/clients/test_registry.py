@@ -104,3 +104,12 @@ def test_fake_chain_client_satisfies_protocol() -> None:
 def test_chain_client_chain_attribute_lemonchain() -> None:
     client = BlockscoutClient("http://test", http=httpx.Client(), rate_limiter=NullRateLimiter())
     assert client.chain == Chain.LEMONCHAIN
+
+
+# ── Static mypy conformance guard ─────────────────────────────────────────────
+# mypy --strict checks this binding at import time; if BlockscoutClient ever
+# diverges from ChainClient's Protocol, this function will produce a type error.
+
+
+def _blockscout_satisfies_chain_client(client: BlockscoutClient) -> ChainClient:
+    return client
