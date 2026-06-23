@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,6 +10,7 @@ class Settings(BaseSettings):
 
     explorer_lemonchain_url: str = "https://explorer.lemonchain.io/api"
     explorer_lemonchain_testnet_url: str = "https://explorer-testnet.lemonchain.io/api"
+    lemonchain_network: Literal["mainnet", "testnet"] = "testnet"
     explorer_request_timeout_s: float = 15.0
     explorer_rate_limit_rps: float = 4.0
     explorer_rate_limit_burst: int = 4

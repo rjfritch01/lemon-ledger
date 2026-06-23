@@ -106,6 +106,47 @@ def test_chain_client_chain_attribute_lemonchain() -> None:
     assert client.chain == Chain.LEMONCHAIN
 
 
+# ── lemonchain_network URL selection ─────────────────────────────────────────
+
+
+@patch("lemon_ledger.clients.registry.RedisTokenBucket")
+def test_lemonchain_network_mainnet_uses_mainnet_url(mock_bucket: Any) -> None:
+    res = _mock_resources()
+    s = Settings(lemonchain_network="mainnet")
+    client = build_chain_client(Chain.LEMONCHAIN, res, s)
+    assert isinstance(client, BlockscoutClient)
+    assert client._base_url == s.explorer_lemonchain_url
+    assert client.chain == Chain.LEMONCHAIN
+
+
+@patch("lemon_ledger.clients.registry.RedisTokenBucket")
+def test_lemonchain_network_testnet_uses_testnet_url(mock_bucket: Any) -> None:
+    res = _mock_resources()
+    s = Settings(lemonchain_network="testnet")
+    client = build_chain_client(Chain.LEMONCHAIN, res, s)
+    assert isinstance(client, BlockscoutClient)
+    assert client._base_url == s.explorer_lemonchain_testnet_url
+    assert client.chain == Chain.LEMONCHAIN
+
+
+@patch("lemon_ledger.clients.registry.RedisTokenBucket")
+def test_lemonchain_network_default_is_testnet(mock_bucket: Any) -> None:
+    res = _mock_resources()
+    s = Settings()
+    client = build_chain_client(Chain.LEMONCHAIN, res, s)
+    assert isinstance(client, BlockscoutClient)
+    assert client._base_url == "https://explorer-testnet.lemonchain.io/api"
+    assert client.chain == Chain.LEMONCHAIN
+
+
+def test_lemonchain_network_mainnet_and_testnet_urls_differ() -> None:
+    s = Settings()
+    assert s.explorer_lemonchain_url == "https://explorer.lemonchain.io/api"
+    assert s.explorer_lemonchain_testnet_url == "https://explorer-testnet.lemonchain.io/api"
+    assert s.explorer_lemonchain_url != s.explorer_lemonchain_testnet_url
+    assert s.lemonchain_network == "testnet"
+
+
 # ── Static mypy conformance guard ─────────────────────────────────────────────
 # mypy --strict checks this binding at import time; if BlockscoutClient ever
 # diverges from ChainClient's Protocol, this function will produce a type error.

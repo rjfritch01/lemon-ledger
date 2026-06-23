@@ -240,14 +240,19 @@ def build_blockscout_client(
 ) -> BlockscoutClient:
     """Resolve chain → base_url and construct a BlockscoutClient.
 
-    api_key is intentionally None for Lemonchain (no key required).
+    Network selection (mainnet vs Citron testnet) is driven by
+    settings.lemonchain_network, not the chain value — testnet is an
+    environment concern, not a separate chain.  api_key is intentionally
+    None for Lemonchain (no key required on the free public instance).
     """
-    if chain == "lemonchain":
-        base_url = settings.explorer_lemonchain_url
-    elif chain == "lemonchain-testnet":
-        base_url = settings.explorer_lemonchain_testnet_url
-    else:
+    if chain != "lemonchain":
         raise ValueError(f"Unsupported chain for Blockscout client: {chain!r}")
+
+    base_url = (
+        settings.explorer_lemonchain_url
+        if settings.lemonchain_network == "mainnet"
+        else settings.explorer_lemonchain_testnet_url
+    )
 
     return BlockscoutClient(
         base_url,
