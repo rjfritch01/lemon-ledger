@@ -36,6 +36,20 @@ dev:
 worker:
     cd {{_api}} && uv run celery -A lemon_ledger.workers.celery_app worker -l info
 
+# ── migrations ─────────────────────────────────────────────────────────────────
+
+# Apply all pending migrations to the local Postgres
+migrate:
+    cd {{_api}} && uv run alembic upgrade head
+
+# Autogenerate a new migration; usage: just migrate-rev msg="add user table"
+migrate-rev msg='':
+    cd {{_api}} && uv run alembic revision --autogenerate -m "{{msg}}"
+
+# Fail if there is more than one alembic head (indicates a branch)
+migrate-check:
+    @test "$( cd {{_api}} && uv run alembic heads | wc -l | tr -d ' ')" -eq 1
+
 # ── quality gates ──────────────────────────────────────────────────────────────
 
 # Run all tests (with coverage gate)

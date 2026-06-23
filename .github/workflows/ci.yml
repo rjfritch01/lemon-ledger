@@ -48,4 +48,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
       - run: uv sync
+      - name: Assert single migration head
+        run: test "$(uv run alembic heads | wc -l | tr -d ' ')" -eq 1
       - run: uv run pytest
