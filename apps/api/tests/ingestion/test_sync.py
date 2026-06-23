@@ -89,6 +89,13 @@ class FakeChainClient:
     ) -> list[dict[str, str]]:
         return []
 
+    def get_block_by_time(
+        self,
+        dt: object,
+        closest: str = "before",
+    ) -> int:
+        return self._latest_block
+
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 

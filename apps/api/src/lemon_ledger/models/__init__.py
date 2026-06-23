@@ -1,4 +1,5 @@
 from lemon_ledger.models.entity import Entity as Entity
+from lemon_ledger.models.historical_price import HistoricalPrice as HistoricalPrice
 from lemon_ledger.models.raw import RawInternalTx as RawInternalTx
 from lemon_ledger.models.raw import RawLog as RawLog
 from lemon_ledger.models.raw import RawTokenTransfer as RawTokenTransfer

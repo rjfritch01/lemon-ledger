@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -63,6 +64,7 @@ class PricingService:
         coingecko: CoinGeckoClient,
         cmc: CoinMarketCapClient | None = None,
         cache: PriceCache | None = None,
+        historical_fallback: Callable[[str, str, date], Decimal | None] | None = None,
     ) -> None:
         self._registry = registry
         self._oracle = oracle
@@ -71,6 +73,7 @@ class PricingService:
         self._cache: PriceCacheProtocol = cache if cache is not None else _NullCache()
         self._health_cache: PricingHealthReport | None = None
         self._health_cached_at: float = 0.0
+        self._historical_fallback = historical_fallback
 
     # ── public interface ───────────────────────────────────────────────────────
 
@@ -97,7 +100,7 @@ class PricingService:
         if db_price is not None:
             return db_price
 
-        return self._historical_live_fallback(token_id, day)
+        return self._historical_live_fallback(chain, token_id, day)
 
     def get_supported_tokens(self, chain: str) -> list[TokenInfo]:
         """Tier-1 tokens on this chain (no user_id filtering this phase)."""
@@ -236,9 +239,15 @@ class PricingService:
             log.exception("Price source error for %s/%s", token.chain, token.symbol)
             return None
 
-    def _historical_live_fallback(self, token_id: str, day: date) -> Decimal | None:
-        """Hook for the nightly backfill PR — returns None until wired."""
-        return None
+    def _historical_live_fallback(self, chain: str, token_id: str, day: date) -> Decimal | None:
+        """On-demand event-log fetch when a past-day price is not in the DB.
+
+        Wired at construction time via historical_fallback= (historical_backfill.fetch_day).
+        Returns None if not wired (default for tests that don't need backfill).
+        """
+        if self._historical_fallback is None:
+            return None
+        return self._historical_fallback(chain, token_id, day)
 
     def _ping_coingecko(self) -> bool:
         """Quick CoinGecko connectivity check."""

@@ -1,2 +1,3 @@
+from lemon_ledger.pricing.tasks import nightly_oracle_sync as nightly_oracle_sync
 from lemon_ledger.tasks.sync import sync_all_active_wallets as sync_all_active_wallets
 from lemon_ledger.tasks.sync import sync_wallet_task as sync_wallet_task

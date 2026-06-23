@@ -1,6 +1,7 @@
 import time
 from collections.abc import Iterator
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 import httpx
 from tenacity import (
@@ -229,6 +230,35 @@ class BlockscoutClient:
             params["topic0"] = topic0
         payload = self._get(params)
         return parse_list_envelope(payload)
+
+    def get_block_by_time(
+        self,
+        dt: datetime,
+        closest: Literal["before", "after"] = "before",
+    ) -> int:
+        """Return the block number closest to the given UTC datetime.
+
+        Uses the Etherscan-compatible ``getblocknobytime`` endpoint.
+        ``closest`` controls whether to pick the block just before or after the
+        timestamp (maps directly to the API ``closest`` parameter).
+        """
+        ts = int(dt.timestamp())
+        payload = self._get(
+            {
+                "module": "block",
+                "action": "getblocknobytime",
+                "timestamp": str(ts),
+                "closest": closest,
+            }
+        )
+        if not isinstance(payload, dict):
+            raise ChainFatalError(f"getblocknobytime: expected dict, got {type(payload).__name__}")
+        result = payload.get("result")
+        if not isinstance(result, str | int):
+            raise ChainFatalError(
+                f"getblocknobytime: unexpected result type {type(result).__name__!r}"
+            )
+        return int(result)
 
 
 def build_blockscout_client(
