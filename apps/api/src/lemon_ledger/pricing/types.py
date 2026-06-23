@@ -67,3 +67,14 @@ class TokenRegistryRepo(Protocol):
     def historical_price(self, chain: str, token_id: str, day: date) -> Decimal | None: ...
 
     def list_tier1_by_chain(self, chain: str) -> list[TokenRow]: ...
+
+    def id_for_address(self, chain: str, contract_address: str) -> str | None:
+        """Return the token_id for a given contract address, or None if unknown.
+
+        The zero address maps to the chain's native LEMX token.
+        """
+        ...
+
+    def tier1_lemonchain(self) -> list[TokenRow]:
+        """Convenience alias for list_tier1_by_chain('lemonchain')."""
+        ...

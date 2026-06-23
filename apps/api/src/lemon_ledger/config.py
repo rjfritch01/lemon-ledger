@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     coingecko_api_key: str | None = None
     cmc_api_key: str | None = None
 
+    oracle_contract_lemonchain: str | None = None  # deployed oracle contract address
+
     worker_db_pool_size: int = 2
     worker_db_max_overflow: int = 2
     sync_confirmations_lemonchain: int = 12
