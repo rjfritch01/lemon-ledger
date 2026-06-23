@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     explorer_page_size: int = 1000
     explorer_max_retries: int = 5
 
+    coingecko_api_key: str | None = None
+    cmc_api_key: str | None = None
+
     worker_db_pool_size: int = 2
     worker_db_max_overflow: int = 2
     sync_confirmations_lemonchain: int = 12
