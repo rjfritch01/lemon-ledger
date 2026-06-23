@@ -32,6 +32,7 @@ dev = [
     "sqlalchemy[mypy]>=2.0.30",
     "bandit>=1.7",
     "pytest-rerunfailures>=14.0",
+    "fakeredis>=2.26",
 ]
 
 [project.scripts]
