@@ -18,7 +18,12 @@ celery_app: Any = Celery(
     "lemon_ledger",
     broker=get_settings().redis_url,
     backend=get_settings().redis_url,
-    include=["lemon_ledger.tasks", "lemon_ledger.pricing.tasks"],
+    include=[
+        "lemon_ledger.tasks",
+        "lemon_ledger.pricing.tasks",
+        "lemon_ledger.classify.tasks",
+        "lemon_ledger.jobs.supply_snapshot",
+    ],
 )
 
 celery_app.conf.update(
