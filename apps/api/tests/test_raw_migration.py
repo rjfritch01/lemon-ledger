@@ -7,12 +7,12 @@ alembic upgrade head, then confirms downgrade reverses all changes.
 from collections.abc import AsyncGenerator, Generator, Sequence
 
 import pytest
+from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
 from alembic import command
-from alembic.config import Config
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
