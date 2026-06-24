@@ -109,3 +109,80 @@ def wallet_add(
         session.commit()
 
     typer.echo(json.dumps({"wallet_id": str(w.id), "address": address, "chain": chain}))
+
+
+@app.command("backfill-prices")
+def backfill_prices(
+    chain: Annotated[str, typer.Option("--chain", help="Chain to backfill")] = "lemonchain",
+    resume: Annotated[
+        bool, typer.Option("--resume/--no-resume", help="Resume from Redis cursor")
+    ] = False,
+) -> None:
+    """Backfill DailyAverageFinalized events from oracle genesis to chain head.
+
+    Safe to re-run: idempotent upserts; manual-override rows are never
+    overwritten.  Use --resume to continue after a crash without re-scanning
+    already-processed blocks.
+    """
+    import httpx
+    import redis as redis_lib
+
+    from lemon_ledger.clients.blockscout import build_blockscout_client
+    from lemon_ledger.clients.rate_limit import RedisTokenBucket
+    from lemon_ledger.pricing.historical_backfill import (
+        RedisCursor,
+        _NullCursor,
+        backfill,
+    )
+
+    settings = get_settings()
+
+    oracle_contract: str | None = getattr(settings, "oracle_contract_lemonchain", None)
+    if not oracle_contract:
+        typer.echo(
+            "ORACLE_CONTRACT_LEMONCHAIN must be set in environment to run backfill.", err=True
+        )
+        raise typer.Exit(1)
+
+    r = redis_lib.Redis.from_url(settings.redis_url)
+    http = httpx.Client(timeout=settings.explorer_request_timeout_s)
+    limiter = RedisTokenBucket(
+        r,
+        key=f"ratelimit:{chain}",
+        rate_per_sec=settings.explorer_rate_limit_rps,
+        burst=settings.explorer_rate_limit_burst,
+    )
+    chain_client = build_blockscout_client(chain, settings, http=http, rate_limiter=limiter)
+    cursor_store = RedisCursor(r) if resume else _NullCursor()
+    maker = _get_sessionmaker()
+
+    # Registry must be wired when token_registry table is populated
+    # (this command is a thin runner; pass a real SQLAlchemy-backed repo in prod)
+
+    class _NullRegistry:
+        def get_by_id(self, token_id: str) -> None:
+            return None
+
+        def historical_price(self, chain: str, token_id: str, day: date) -> None:
+            return None
+
+        def list_tier1_by_chain(self, chain: str) -> list:  # type: ignore[type-arg]
+            return []
+
+        def id_for_address(self, chain: str, contract_address: str) -> str | None:
+            return None
+
+        def tier1_lemonchain(self) -> list:  # type: ignore[type-arg]
+            return []
+
+    typer.echo(f"Starting backfill on {chain!r} (resume={resume}) …")
+    with worker_session(maker) as session:
+        backfill(
+            chain_client,
+            oracle_contract,
+            _NullRegistry(),
+            session,
+            cursor_store=cursor_store,
+            chain=chain,
+        )
+    typer.echo("Backfill complete.")

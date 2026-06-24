@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Protocol, runtime_checkable
+from datetime import datetime
+from typing import Literal, Protocol, runtime_checkable
 
 from lemon_ledger.domain.chains import Chain
 
@@ -49,3 +50,9 @@ class ChainClient(Protocol):
         to_block: int | str = ...,
         topic0: str | None = ...,
     ) -> list[dict[str, str]]: ...
+
+    def get_block_by_time(
+        self,
+        dt: datetime,
+        closest: Literal["before", "after"] = ...,
+    ) -> int: ...

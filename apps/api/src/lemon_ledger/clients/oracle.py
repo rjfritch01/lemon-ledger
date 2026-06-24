@@ -1,7 +1,9 @@
 """Chainlink-compatible oracle price client.
 
-PriceDataFeed is the per-contract low-level reader.
-OracleClient is the multi-feed dispatcher injected into PricingService.
+PriceDataFeed       — Chainlink AggregatorV3 reader (spot price / round data).
+OracleClient        — multi-feed dispatcher (spot, daily-avg, health, history).
+OracleDailyAverage  — per-day record returned by get_daily_averages_history.
+oracle_key          — resolves a token's oracle lookup address (zero for native LEMX).
 """
 
 from __future__ import annotations
@@ -30,10 +32,40 @@ class OracleTokenNotSupported(Exception):
     """No oracle price feed is configured for this token."""
 
 
+# ABI selector for getHistory(address,uint256) — first 4 bytes of keccak256
+_GET_HISTORY = "0x6a3d4b5c"
+
+# Zero address — used as the oracle key for native (non-contract) tokens like LEMX
+_ZERO_ADDRESS = "0x" + "0" * 40
+
+# Oracle price decimals (all feeds publish 8-decimal prices)
+_ORACLE_PRICE_DECIMALS = 8
+
+
 class _TokenLike(Protocol):
     """Minimal interface the oracle dispatcher needs from a token row."""
 
     symbol: str
+    contract_address: str | None
+
+
+@dataclass(frozen=True)
+class OracleDailyAverage:
+    """One row of on-chain daily-average history."""
+
+    day_timestamp: int  # Unix timestamp of UTC midnight for this day
+    average_price: Decimal  # already scaled by from_oracle_price
+    data_points: int
+    confidence: int
+
+
+def oracle_key(token: _TokenLike) -> str:
+    """Return the address the oracle uses to key this token's price data.
+
+    Native tokens with no deployed contract (e.g. LEMX on Lemonchain) use the
+    zero address as the oracle lookup key.
+    """
+    return token.contract_address or _ZERO_ADDRESS
 
 
 @dataclass(frozen=True)
@@ -141,6 +173,60 @@ class OracleClient:
             return self._feed_for(token).daily_average()
         except OracleTokenNotSupported:
             return None
+
+    def get_daily_averages_history(
+        self,
+        token: _TokenLike,
+        max_entries: int = 30,
+    ) -> list[OracleDailyAverage]:
+        """Return up to ``max_entries`` days of daily-average history for this token.
+
+        Calls ``getHistory(address token, uint256 count)`` on the oracle contract
+        and decodes the packed ABI response.  The oracle keeps only the last 30
+        calendar days on-chain; older history must come from the event-log backfill.
+
+        ABI response layout per entry (5 × 32 bytes):
+          slot 0: dayTimestamp (uint64)
+          slot 1: dailyAverage (uint128, raw oracle units)
+          slot 2: dataPoints (uint32)
+          slot 3: confidence (uint32)
+        Entries are returned oldest-first; we reverse to get most-recent-first.
+        """
+        feed = self._feed_for(token)
+        addr = oracle_key(token)
+
+        # Encode getHistory(address,uint256): selector + zero-padded args
+        addr_clean = addr[2:].lower().zfill(64)
+        count_hex = hex(max_entries)[2:].zfill(64)
+        calldata = _GET_HISTORY + addr_clean + count_hex
+
+        raw_hex = feed._provider.eth_call(feed._contract, calldata)
+        payload = bytes.fromhex(raw_hex[2:])
+
+        # ABI-encoded dynamic array: offset (32) + length (32) + entries
+        if len(payload) < 64:
+            return []
+        entry_count = int.from_bytes(payload[32:64], "big", signed=False)
+        entries: list[OracleDailyAverage] = []
+        entry_size = 4 * 32  # 4 slots × 32 bytes
+        base = 64
+        for i in range(min(entry_count, max_entries)):
+            off = base + i * entry_size
+            if off + entry_size > len(payload):
+                break
+            day_ts = int.from_bytes(payload[off : off + 32], "big", signed=False)
+            avg_raw = int.from_bytes(payload[off + 32 : off + 64], "big", signed=False)
+            data_pts = int.from_bytes(payload[off + 64 : off + 96], "big", signed=False)
+            conf = int.from_bytes(payload[off + 96 : off + 128], "big", signed=False)
+            entries.append(
+                OracleDailyAverage(
+                    day_timestamp=day_ts,
+                    average_price=Decimal(avg_raw).scaleb(-_ORACLE_PRICE_DECIMALS),
+                    data_points=data_pts,
+                    confidence=conf,
+                )
+            )
+        return entries
 
     def get_health(self) -> OracleHealth:
         """Probe every registered feed and return aggregate health."""

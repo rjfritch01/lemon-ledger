@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -97,6 +98,13 @@ def test_fake_chain_client_satisfies_protocol() -> None:
             topic0: str | None = None,
         ) -> list[dict[str, str]]:
             return []
+
+        def get_block_by_time(
+            self,
+            dt: datetime,
+            closest: Literal["before", "after"] = "before",
+        ) -> int:
+            return 0
 
     assert isinstance(_MinimalFake(), ChainClient)
 
