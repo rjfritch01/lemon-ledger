@@ -1,11 +1,10 @@
 from collections.abc import AsyncGenerator, Generator
 
 import pytest
+from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
-
-from alembic import command
 
 
 @pytest.fixture(scope="session")

@@ -19,12 +19,12 @@ from collections.abc import Generator
 
 import httpx
 import pytest
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
-from alembic import command
 from lemon_ledger.clients.blockscout import BlockscoutClient
 from lemon_ledger.clients.envelope import _EMPTY_MESSAGES
 from lemon_ledger.clients.rate_limit import NullRateLimiter
