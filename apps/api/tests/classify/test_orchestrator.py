@@ -21,6 +21,7 @@ from lemon_ledger.classify.orchestrator import (
     replace_classified,
 )
 from lemon_ledger.classify.types import ClaimSet, ClassifiedEvent
+from lemon_ledger.models.classified import ClassifiedTransaction
 from lemon_ledger.models.enums import ClassificationKind
 
 # ── common_transfer_events ─────────────────────────────────────────────────────
@@ -157,7 +158,7 @@ def test_replace_classified_deletes_and_readds() -> None:
     session = MagicMock()
     session.scalar.return_value = 0  # no pins
 
-    events = [MagicMock()]
+    events: list[ClassifiedTransaction] = [MagicMock(spec=ClassifiedTransaction)]
     replace_classified(session, uuid.uuid4(), "0xhash", events)
 
     session.execute.assert_called_once()
