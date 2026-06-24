@@ -39,5 +39,6 @@ class Wallet(UUIDPrimaryKeyMixin, Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_synced_block: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_classified_block: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -186,3 +186,39 @@ def backfill_prices(
             chain=chain,
         )
     typer.echo("Backfill complete.")
+
+
+@app.command("classify")
+def classify_cmd(
+    wallet: Annotated[str, typer.Option("--wallet", help="Wallet address (0x...)")],
+    chain: Annotated[str, typer.Option("--chain", help="Chain identifier")] = "lemonchain",
+    from_block: Annotated[
+        int | None,
+        typer.Option("--from-block", help="Reset last_classified_block cursor to N-1"),
+    ] = None,
+) -> None:
+    """Run the classifier for a wallet's settled block range.
+
+    --from-block N resets the cursor to N-1, triggering reclassification of
+    blocks [N, last_synced_block].  Use this after backfill writes historical
+    prices to upgrade cold-start transfer-in rows to mint/reward.
+    """
+    from lemon_ledger.classify.tasks import classify_wallet_task
+
+    address = wallet.lower()
+    maker = _get_sessionmaker()
+
+    with worker_session(maker) as session:
+        db_wallet = session.scalars(
+            select(Wallet).where(Wallet.chain == chain, Wallet.address == address)
+        ).first()
+        if db_wallet is None:
+            typer.echo(f"Wallet {address!r} on {chain!r} not found.", err=True)
+            raise typer.Exit(1)
+        wallet_id = str(db_wallet.id)
+        if from_block is not None:
+            db_wallet.last_classified_block = from_block - 1
+            session.commit()
+
+    result = classify_wallet_task.apply(args=[wallet_id]).get()
+    typer.echo(json.dumps(result, indent=2))

@@ -1,3 +1,5 @@
+from lemon_ledger.models.classified import ClassifiedTransaction as ClassifiedTransaction
+from lemon_ledger.models.classified import L2DecoderConfig as L2DecoderConfig
 from lemon_ledger.models.entity import Entity as Entity
 from lemon_ledger.models.historical_price import HistoricalPrice as HistoricalPrice
 from lemon_ledger.models.raw import RawInternalTx as RawInternalTx
