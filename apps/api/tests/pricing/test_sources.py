@@ -98,11 +98,11 @@ def test_lemx_crossval_logs_warning_on_divergence(
     oracle = _oracle_mock(Decimal("0.100"))
     cg = MagicMock()
     cg.coin_price_usd.return_value = Decimal("0.200")  # 100% — exceeds 5%
-    with caplog.at_level(logging.WARNING, logger="lemon_ledger.pricing.sources"):
+    with caplog.at_level(logging.WARNING):
         result = lemx_oracle_crossval(oracle, cg)(_tok())
     assert result is not None
     assert result.price_usd == Decimal("0.100")  # ORACLE value returned, not CoinGecko
-    assert any("diverge" in r.message.lower() for r in caplog.records)
+    assert any("diverge" in r.getMessage().lower() for r in caplog.records)
 
 
 def test_lemx_crossval_oracle_stale_returns_none_and_skips_cg() -> None:
@@ -159,11 +159,11 @@ def test_stable_peg_returns_one_usd() -> None:
 def test_stable_peg_logs_depeg_warning(caplog: pytest.LogCaptureFixture) -> None:
     oracle = MagicMock()
     oracle.get_spot_price.return_value = Decimal("0.95")  # 5% depeg
-    with caplog.at_level(logging.WARNING, logger="lemon_ledger.pricing.sources"):
+    with caplog.at_level(logging.WARNING):
         result = stable_peg(oracle)(_tok("LUSD", "ecosystem-stablecoin"))
     assert result is not None
     assert result.price_usd == Decimal("1.00")  # peg ALWAYS returned
-    assert any("depeg" in r.message.lower() for r in caplog.records)
+    assert any("depeg" in r.getMessage().lower() for r in caplog.records)
 
 
 def test_stable_peg_oracle_failure_still_returns_peg() -> None:
