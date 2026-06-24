@@ -139,7 +139,8 @@ async def test_no_float_max_supply(db_session: AsyncSession) -> None:
         assert not isinstance(row.max_supply, float), f"{row.symbol} max_supply is a float"
 
 
-async def test_nft_symbols_not_seeded(db_session: AsyncSession) -> None:
+async def test_nft_symbols_seeded_by_1_6(db_session: AsyncSession) -> None:
+    """1.6 migration adds LQST/SCDT as tier-2 ecosystem-l2 entries on Lemonchain."""
     result = await db_session.execute(
         select(func.count())
         .select_from(TokenRegistry)
@@ -148,7 +149,7 @@ async def test_nft_symbols_not_seeded(db_session: AsyncSession) -> None:
             TokenRegistry.symbol.in_(list(_NFT_SYMBOLS)),
         )
     )
-    assert result.scalar_one() == 0, "NFT collections LQST/SCDT must not be in this seed"
+    assert result.scalar_one() == 2, "LQST/SCDT must be seeded by the 1.6 migration"
 
 
 @pytest.mark.parametrize(

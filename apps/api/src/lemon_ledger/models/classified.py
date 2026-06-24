@@ -108,6 +108,9 @@ class L2DecoderConfig(Base):
     reward_event_topic0: Mapped[str | None] = mapped_column(String(66), nullable=True)
     burn_and_mint: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     distribution_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 1.6: deflationary tokenomics (separate from burn_and_mint mint-mechanics)
+    deflationary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    buy_burn_wallet: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

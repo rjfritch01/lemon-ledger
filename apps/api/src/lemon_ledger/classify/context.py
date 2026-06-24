@@ -1,10 +1,11 @@
 """WalletContext — per-task read/write surface for decoders.
 
 Constructed once per classify_wallet task run. Provides:
-  - Token registry lookups (by id and by address)
+  - Token registry lookups (by id, by address, and by symbol)
   - L2DecoderConfig access (cached per token_id)
   - Option-C write-back: propose_staking_contract / propose_nft_contract
   - is_tracked_wallet: whether an address belongs to the same user
+  - is_confirmed_burn_address: burn address lookup for deflationary tokens
   - decoders_for_bundle: which L2Decoder instances are relevant for a TxBundle
 """
 
@@ -48,6 +49,8 @@ class WalletContext:
         self._configs: dict[uuid.UUID, L2DecoderConfig] = {}
         # Address → decoder list cache (rebuilt when configs change)
         self._addr_decoder_cache: dict[str, list[L2Decoder]] | None = None
+        # Lazy-loaded burn address cache (loaded on first is_confirmed_burn_address call)
+        self._confirmed_burns: set[str] | None = None
 
     # ── registry (read-only) ───────────────────────────────────────────────────
 
@@ -65,6 +68,28 @@ class WalletContext:
             return None
         from lemon_ledger.pricing.types import TokenRow
 
+        return TokenRow(
+            token_id=str(row.id),
+            symbol=row.symbol,
+            category=row.category,
+            contract_address=row.contract_address,
+            chain=row.chain,
+            tier=row.tier,
+            decimals=row.decimals,
+        )
+
+    def registry_by_symbol(self, symbol: str) -> TokenRow | None:
+        """Look up a TokenRow by symbol on this wallet's chain."""
+        from lemon_ledger.models.token_registry import TokenRegistry
+        from lemon_ledger.pricing.types import TokenRow
+
+        row = (
+            self._session.query(TokenRegistry)
+            .filter_by(chain=self.wallet.chain, symbol=symbol)
+            .first()
+        )
+        if row is None:
+            return None
         return TokenRow(
             token_id=str(row.id),
             symbol=row.symbol,
@@ -193,6 +218,26 @@ class WalletContext:
                     "proposed": addr,
                 },
             )
+
+    # ── burn address helpers ──────────────────────────────────────────────────
+
+    def is_confirmed_burn_address(self, address: str) -> bool:
+        """Return True if *address* is a confirmed or universal burn sink.
+
+        Loads all confirmed/universal rows from burn_addresses on first call
+        (lazy cache). Only addresses with confidence='confirmed' or 'universal'
+        qualify; 'discovered' rows require human gate before booking a BURN loss.
+        """
+        if self._confirmed_burns is None:
+            from lemon_ledger.models.burn_address import BurnAddress
+
+            rows = (
+                self._session.query(BurnAddress)
+                .filter(BurnAddress.confidence.in_(["universal", "confirmed"]))
+                .all()
+            )
+            self._confirmed_burns = {r.address.lower() for r in rows}
+        return address.lower() in self._confirmed_burns
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
