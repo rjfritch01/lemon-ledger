@@ -55,8 +55,18 @@ def check_completion(
     *,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Check completion for all L2 tokens and update distribution_complete flags."""
-    configs = session.scalars(select(L2DecoderConfig)).all()
+    """Check completion for non-deflationary L2 tokens; snapshot deflationary ones.
+
+    Non-deflationary tokens: compare totalSupply() against max_supply to set
+    distribution_complete when the token's max supply has been distributed.
+
+    Deflationary tokens: snapshot totalSupply() for monitoring purposes.
+    totalSupply() falls over time due to buy-burn; distribution_complete is not
+    applicable. Snapshotted value is logged but no flag is set.
+    """
+    configs = session.scalars(
+        select(L2DecoderConfig).where(L2DecoderConfig.deflationary.is_(False))
+    ).all()
     updated: list[str] = []
     skipped: list[str] = []
 

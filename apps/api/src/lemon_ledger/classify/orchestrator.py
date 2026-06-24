@@ -13,9 +13,16 @@ from decimal import Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from lemon_ledger.classify.recognizers import (
+    SwapCreditRedemptionRecognizer,
+    WrapRecognizer,
+)
 from lemon_ledger.classify.types import ClaimSet, ClassifiedEvent, TxBundle
 from lemon_ledger.models.classified import ClassifiedTransaction
 from lemon_ledger.models.enums import ClassificationKind
+
+# Union type so mypy sees .recognize() on every element of _RECOGNIZERS.
+_BundleRecognizer = WrapRecognizer | SwapCreditRedemptionRecognizer
 
 # Priority within a tx for deterministic event_seq ordering.
 # Lower number = earlier in the sequence.
@@ -24,10 +31,17 @@ _KIND_PRIORITY: dict[ClassificationKind, int] = {
     ClassificationKind.STAKE: 1,
     ClassificationKind.UNSTAKE: 2,
     ClassificationKind.REWARD: 3,
-    ClassificationKind.TRANSFER_IN: 4,
-    ClassificationKind.TRANSFER_OUT: 5,
-    ClassificationKind.UNCLASSIFIED: 6,
+    ClassificationKind.WRAP: 4,
+    ClassificationKind.UNWRAP: 5,
+    ClassificationKind.SWAP_CREDIT_REDEMPTION: 6,
+    ClassificationKind.BURN: 7,
+    ClassificationKind.TRANSFER_IN: 8,
+    ClassificationKind.TRANSFER_OUT: 9,
+    ClassificationKind.PENDING: 10,
+    ClassificationKind.UNCLASSIFIED: 11,
 }
+
+_RECOGNIZERS: list[_BundleRecognizer] = [WrapRecognizer(), SwapCreditRedemptionRecognizer()]
 
 ZERO_ADDR = "0x" + "0" * 40
 
@@ -44,6 +58,11 @@ def classify_bundle(
 
     claims = ClaimSet()
     events: list[ClassifiedEvent] = []
+
+    # Bundle-level recognizers run first to claim wrap/swap-credit rows
+    # before per-L2 decoders see the transfer list.
+    for recognizer in _RECOGNIZERS:
+        events += recognizer.recognize(bundle, ctx, claims)
 
     for decoder in ctx.decoders_for_bundle(bundle):
         events += decoder.decode(bundle, ctx, claims)
@@ -89,6 +108,17 @@ def common_transfer_events(
 
         is_nft = "tokenID" in t.raw
         amount = Decimal(1) if is_nft else _token_amount(t)
+
+        # Burn detection: ERC-20 outflow to a confirmed burn address for a
+        # deflationary token → BURN instead of TRANSFER_OUT.
+        # Only 'confirmed' or 'universal' sinks qualify; 'discovered' requires
+        # human review before we book a capital loss.
+        if kind == ClassificationKind.TRANSFER_OUT and not is_nft:
+            if ctx.is_confirmed_burn_address(to_addr) and _is_deflationary_in_config(
+                t.contract_address, ctx
+            ):
+                kind = ClassificationKind.BURN
+
         events.append(
             ClassifiedEvent(
                 classification=kind,
@@ -240,3 +270,24 @@ def _token_amount(transfer: object) -> Decimal:
     decimals = int(decimals_str) if decimals_str else 18
     raw_value = str(t.value)
     return Decimal(raw_value).scaleb(-decimals)
+
+
+def _is_deflationary_in_config(contract_address: str, ctx: object) -> bool:
+    """Return True if l2_decoder_config.deflationary is set for this ERC-20 address."""
+    from lemon_ledger.classify.context import WalletContext
+    from lemon_ledger.models.classified import L2DecoderConfig
+    from lemon_ledger.models.token_registry import TokenRegistry
+
+    if not isinstance(ctx, WalletContext):
+        return False
+
+    tr = (
+        ctx._session.query(TokenRegistry)
+        .filter_by(chain=ctx.wallet.chain, contract_address=contract_address.lower())
+        .first()
+    )
+    if tr is None:
+        return False
+
+    cfg = ctx._session.query(L2DecoderConfig).filter_by(token_id=tr.id).first()
+    return bool(cfg and cfg.deflationary)

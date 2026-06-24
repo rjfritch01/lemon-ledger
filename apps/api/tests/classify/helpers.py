@@ -108,6 +108,8 @@ def make_decoder_config(
     nft_contract_status: str = "unknown",
     distribution_complete: bool = False,
     mint_fee_wei: Decimal | None = None,
+    deflationary: bool = False,
+    buy_burn_wallet: str | None = None,
 ) -> MagicMock:
     cfg = MagicMock(spec=L2DecoderConfig)
     cfg.token_id = token_id
@@ -120,6 +122,8 @@ def make_decoder_config(
     cfg.distribution_complete = distribution_complete
     cfg.mint_fee_wei = mint_fee_wei
     cfg.mint_contract = None
+    cfg.deflationary = deflationary
+    cfg.buy_burn_wallet = buy_burn_wallet
     return cfg
 
 
@@ -155,7 +159,9 @@ def make_mock_ctx(
     ctx.config_for.return_value = cfg
     ctx.registry_by_id.return_value = token_row
     ctx.registry_by_address.return_value = None
+    ctx.registry_by_symbol.return_value = None
     ctx.is_tracked_wallet.return_value = False
+    ctx.is_confirmed_burn_address.return_value = False
     ctx.propose_staking_contract.return_value = None
     ctx.propose_nft_contract.return_value = None
     ctx.decoders_for_bundle.return_value = []

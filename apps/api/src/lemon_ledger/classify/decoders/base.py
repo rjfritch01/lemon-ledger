@@ -100,15 +100,32 @@ class L2Decoder:
             if sender == ZERO_ADDR or ctx.is_tracked_wallet(sender):
                 continue
 
-            review = False
-            if not (cfg and cfg.staking_contract and cfg.staking_contract == sender):
-                # Option-C: propose the sender as the staking contract
-                ctx.propose_staking_contract(self.token_id, sender)
-                review = True  # unconfirmed sender → flag for human review
+            if cfg is None or cfg.staking_contract is None:
+                # Staking contract unknown → conservative: propose and park as PENDING.
+                # Never book income until the source is confirmed.
+                if cfg is not None:
+                    ctx.propose_staking_contract(self.token_id, sender)
+                claims.add(t)
+                yield ClassifiedEvent(
+                    classification=ClassificationKind.PENDING,
+                    contract_address=t.contract_address,
+                    token_id=self.token_id,
+                    amount=self._to_decimal(str(t.value), self._decimals(ctx)),
+                    value_usd_at_event=None,
+                    needs_review=True,
+                    notes="staking_contract unknown; pending Option-C confirmation",
+                    _order_hint=t.log_index,
+                )
+                continue
 
-            if cfg and cfg.distribution_complete:
-                review = True  # reward after the supply cap is anomalous
+            staking = cfg.staking_contract
+            if staking.lower() != sender:
+                # Staking contract known but this sender doesn't match;
+                # not a reward — fall through to common layer as transfer-in.
+                continue
 
+            # Staking contract confirmed/discovered and matches sender → REWARD
+            review = (cfg.staking_contract_status != "confirmed") or cfg.distribution_complete
             amount = self._to_decimal(str(t.value), self._decimals(ctx))
             # FMV via PricingService: already the tax-safe path (no stale LKG,
             # returns None for same-day rewards before daily average finalizes).

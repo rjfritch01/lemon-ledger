@@ -17,3 +17,9 @@ class ClassificationKind(StrEnum):
     TRANSFER_IN = "transfer-in"
     TRANSFER_OUT = "transfer-out"
     UNCLASSIFIED = "unclassified"
+    # 1.6 additions
+    PENDING = "pending"
+    WRAP = "wrap"
+    UNWRAP = "unwrap"
+    SWAP_CREDIT_REDEMPTION = "swap-credit-redemption"
+    BURN = "burn"
