@@ -34,7 +34,7 @@ def _make_row(
     return ct, logical_asset_id, user_id
 
 
-def _mock_session(rows: list) -> MagicMock:
+def _mock_session(rows: list[object]) -> MagicMock:
     session = MagicMock()
     session.execute.return_value.all.return_value = rows
     return session

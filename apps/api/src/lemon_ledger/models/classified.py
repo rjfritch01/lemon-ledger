@@ -32,10 +32,11 @@ from uuid_utils.compat import uuid7
 
 from lemon_ledger.db.base import Base
 from lemon_ledger.models._constraints import CHAIN_SQL
-from lemon_ledger.models.enums import ClassificationKind
+from lemon_ledger.models.enums import ClassificationKind, TransferResolution
 
-# CHECK constraint derived from the enum so model and DB never drift.
+# CHECK constraints derived from enums so model and DB never drift.
 _KINDS_SQL = ", ".join(f"'{k.value}'" for k in ClassificationKind)
+_TRANSFER_RES_SQL = ", ".join(f"'{r.value}'" for r in TransferResolution)
 
 
 class ClassifiedTransaction(Base):
@@ -73,6 +74,8 @@ class ClassifiedTransaction(Base):
     relocation_source_event_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
+    # 1.9: stamped by the resolve service; engine reads this, never pending_classifications.
+    transfer_resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
@@ -85,6 +88,10 @@ class ClassifiedTransaction(Base):
         Index("ix_classified_wallet_block", "wallet_id", "block_number"),
         CheckConstraint(f"classification IN ({_KINDS_SQL})", name="ck_classification_kind"),
         CheckConstraint(CHAIN_SQL, name="ck_classified_chain"),
+        CheckConstraint(
+            f"transfer_resolution IS NULL OR transfer_resolution IN ({_TRANSFER_RES_SQL})",
+            name="ck_classified_transfer_resolution",
+        ),
     )
 
 

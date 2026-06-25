@@ -84,3 +84,81 @@ class LotExceptionReason(StrEnum):
     INSUFFICIENT_LOTS = "insufficient_lots"
     MISSING_BASIS = "missing_basis"
     UNRESOLVED_FEE = "unresolved_fee"
+
+
+# ── 1.9 cross-entity / form-generation enums ──────────────────────────────────
+
+
+class TransferResolution(StrEnum):
+    """Engine-signal written by the resolve service onto ClassifiedTransaction.
+
+    The lot engine reads this field (and relocation_source_event_id for relocate-*
+    values) to materialise the correct ledger treatment.  It NEVER reads
+    pending_classifications or bridge_correlations directly.
+    """
+
+    RELOCATE_INTERNAL = "relocate-internal"
+    RELOCATE_CONTRIBUTION = "relocate-contribution"
+    RELOCATE_GIFT = "relocate-gift"
+    RELOCATE_REASSIGNMENT = "relocate-reassignment"
+    DISPOSAL = "disposal"
+    DISPOSAL_RELATED_PARTY = "disposal-related-party"
+    GIFT_OUT = "gift-out"
+    NO_OP_LOAN = "no-op-loan"
+
+
+class PendingClassificationKind(StrEnum):
+    CROSS_ENTITY = "cross-entity"
+    EXTERNAL_OUTFLOW = "external-outflow"
+
+
+class PendingClassificationState(StrEnum):
+    NEEDS_CLASSIFICATION = "needs_classification"
+    CLASSIFIED = "classified"
+    APPLIED = "applied"
+    DISMISSED = "dismissed"
+
+
+class ChosenClassification(StrEnum):
+    """Valid choices for pending_classifications.chosen_classification.
+
+    Validity of (kind, chosen_classification) pairs is enforced in the
+    application layer (resolve service), not via a cross-column DB CHECK.
+    Allowed sets:
+      cross-entity   -> capital-contribution, sale, gift, loan, reassignment
+      external-outflow -> sale, gift, payment
+    """
+
+    CAPITAL_CONTRIBUTION = "capital-contribution"
+    SALE = "sale"
+    GIFT = "gift"
+    LOAN = "loan"
+    REASSIGNMENT = "reassignment"
+    PAYMENT = "payment"
+
+
+class CoveredStatus(StrEnum):
+    """Maps to Form 8949 box selection (Part I vs II columns).
+
+    no-1099-da             -> Box C (short) or F (long)   — no 1099-DA issued
+    covered-basis-reported -> Box A (short) or D (long)   — 1099-DA with basis
+    covered-basis-not-reported -> Box B (short) or E (long) — 1099-DA, no basis
+    """
+
+    NO_1099_DA = "no-1099-da"
+    COVERED_BASIS_REPORTED = "covered-basis-reported"
+    COVERED_BASIS_NOT_REPORTED = "covered-basis-not-reported"
+
+
+class AdjustmentCode(StrEnum):
+    """Form 8949 column (f) adjustment codes.
+
+    Only 'L' (§267 related-party loss disallowance) is populated in Phase 1.
+    Others reserved for future phases.
+    """
+
+    L = "L"  # §267 related-party loss disallowed
+    W = "W"  # wash sale loss disallowed (Phase 3+)
+    D = "D"  # reserved
+    E = "E"  # reserved
+    OTHER = "O"  # reserved

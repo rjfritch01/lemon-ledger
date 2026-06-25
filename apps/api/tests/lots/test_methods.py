@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 
 import pytest
 
@@ -23,6 +24,7 @@ from lemon_ledger.domain.lots.methods import (
     SpecificIdValidator,
 )
 from lemon_ledger.models.enums import HoldingPeriod, SelectionStrategy
+from lemon_ledger.models.lot import TaxLot
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ def _lot(
     acquired_at: datetime,
     lot_id: uuid.UUID | None = None,
     asset_class: str = "fungible",
-) -> object:
+) -> TaxLot:
     """Build a minimal TaxLot-like object for pure-Python tests."""
     from unittest.mock import MagicMock
 
@@ -46,7 +48,7 @@ def _lot(
     lot.cost_basis_usd = Decimal(cost_basis_usd)
     lot.acquired_at = acquired_at
     lot.asset_class = asset_class
-    return lot
+    return cast(TaxLot, lot)
 
 
 T0 = datetime(2024, 1, 1, tzinfo=UTC)
