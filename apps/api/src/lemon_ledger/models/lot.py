@@ -27,7 +27,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 from lemon_ledger.models.enums import (
     AcquisitionType,
+    AdjustmentCode,
     AssetClass,
+    CoveredStatus,
     HoldingPeriod,
     LotExceptionReason,
     SelectionStrategy,
@@ -40,6 +42,8 @@ _ACQ_TYPES = ", ".join(f"'{k.value}'" for k in AcquisitionType)
 _SEL_STRATEGIES = ", ".join(f"'{k.value}'" for k in SelectionStrategy)
 _EXCEPTION_REASONS = ", ".join(f"'{k.value}'" for k in LotExceptionReason)
 _RELOCATION_REASONS = "'wrap','unwrap','bridge','cap-contribution','gift','loan'"
+_COVERED_STATUSES = ", ".join(f"'{k.value}'" for k in CoveredStatus)
+_ADJ_CODES = ", ".join(f"'{k.value}'" for k in AdjustmentCode)
 
 
 class TaxLot(UUIDPrimaryKeyMixin, Base):
@@ -102,6 +106,13 @@ class LotDisposal(UUIDPrimaryKeyMixin, Base):
             f"selection_strategy IN ({_SEL_STRATEGIES})",
             name="ck_lot_disposals_selection_strategy",
         ),
+        CheckConstraint(
+            f"covered_status IN ({_COVERED_STATUSES})", name="ck_lot_disposals_covered_status"
+        ),
+        CheckConstraint(
+            f"adjustment_code IS NULL OR adjustment_code IN ({_ADJ_CODES})",
+            name="ck_lot_disposals_adjustment_code",
+        ),
     )
 
     lot_id: Mapped[uuid.UUID] = mapped_column(
@@ -124,6 +135,10 @@ class LotDisposal(UUIDPrimaryKeyMixin, Base):
     selection_strategy: Mapped[str] = mapped_column(Text, nullable=False)
     selected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     disposed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 1.9: Form 8949 box / adjustment fields.
+    covered_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="no-1099-da")
+    adjustment_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adjustment_usd: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
 
 
 class LotRelocation(UUIDPrimaryKeyMixin, Base):

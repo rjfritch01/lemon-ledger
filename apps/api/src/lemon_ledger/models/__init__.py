@@ -12,6 +12,9 @@ from lemon_ledger.models.lot import LotDisposal as LotDisposal
 from lemon_ledger.models.lot import LotProcessingException as LotProcessingException
 from lemon_ledger.models.lot import LotRelocation as LotRelocation
 from lemon_ledger.models.lot import TaxLot as TaxLot
+from lemon_ledger.models.pending_classification import (
+    PendingClassification as PendingClassification,
+)
 from lemon_ledger.models.raw import RawInternalTx as RawInternalTx
 from lemon_ledger.models.raw import RawLog as RawLog
 from lemon_ledger.models.raw import RawTokenTransfer as RawTokenTransfer
