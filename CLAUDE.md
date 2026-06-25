@@ -89,3 +89,15 @@ Pre-commit vs CI drift — recorded instances:
   `pending` rather than guessing. Unresolved fees flag `pending`, never zero-basis.
 - **Burn addresses never auto-book a capital loss.** Candidate burn addresses
   require trust-gated discovery.
+- **Two parallel audit tables by deliberate design:** `bridge_audit_log` (bridge
+  domain) and `classification_audit_log` (cross-entity pending_classifications).
+  Identical column shape. Disjoint domains. A future chat may unify them but must
+  not break either. Do NOT unify without an explicit decision.
+- **Resolve service mirrors bridge workflow pattern:** `resolve_classification`
+  stamps `transfer_resolution` + writes `classification_audit_log` + sets
+  state='classified'. It writes ZERO rows to tax_lots/lot_disposals — lot
+  materialization is Stage 4's job, full stop.
+- **App-layer kind↔choice validity:** `ALLOWED[kind]` in
+  `domain/cross_entity/resolve.py` enforces which `ChosenClassification` values
+  are valid per `PendingClassificationKind`. Intentionally NOT a DB cross-column
+  CHECK constraint — the DB only validates that each column value is in-set.
