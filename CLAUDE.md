@@ -46,6 +46,28 @@ transactions. "Read-only" is a hard, build-enforced constraint.
 - **PR discipline:** all changes via feature branch + PR; four required CI checks;
   `enforce_admins: false`.
 
+## CI / pre-commit recipe discipline
+The canonical local verification commands are the `just` recipes, NOT hand-typed
+re-implementations of the underlying commands:
+
+| Check | Canonical command |
+|---|---|
+| Lint + format | `just api-lint` |
+| Type check | `just api-typecheck` |
+| Tests | `just api-test` |
+| Full gate | run all three in order |
+
+**Never run `uv run mypy src/` directly.** Always run `just api-typecheck`
+(`uv run mypy src/ tests/`). A bare path-scoped command may silently exclude
+files that CI covers.
+
+Pre-commit vs CI drift — recorded instances:
+- **ruff auto-fix drift** — pre-commit's `ruff --fix` rewrote code the CI lint
+  check then rejected; always check with `--check` before committing.
+- **mypy scope drift** — local `uv run mypy src/` passed (82 files) while CI
+  `uv run mypy src/ tests/` failed with 39 errors in tests/; always run
+  `just api-typecheck`, never a bare path-scoped mypy. (ADR-0002)
+
 ## Tax / domain rules (money-relevant — get these right)
 - **Per-wallet lot pooling is mandatory** under Rev. Proc. 2024-28 (effective
   Jan 1, 2025). Pool key is `(wallet_id, canonical_asset)`. Per-entity pooling is
