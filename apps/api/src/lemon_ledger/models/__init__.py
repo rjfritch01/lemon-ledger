@@ -1,3 +1,6 @@
+from lemon_ledger.models.bridge import BridgeAuditLog as BridgeAuditLog
+from lemon_ledger.models.bridge import BridgeCorrelation as BridgeCorrelation
+from lemon_ledger.models.bridge import CustodyAddress as CustodyAddress
 from lemon_ledger.models.burn_address import BurnAddress as BurnAddress
 from lemon_ledger.models.classified import ClassifiedTransaction as ClassifiedTransaction
 from lemon_ledger.models.classified import L2DecoderConfig as L2DecoderConfig

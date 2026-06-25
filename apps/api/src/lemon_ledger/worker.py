@@ -23,6 +23,7 @@ celery_app: Any = Celery(
         "lemon_ledger.pricing.tasks",
         "lemon_ledger.classify.tasks",
         "lemon_ledger.domain.lots.service",
+        "lemon_ledger.domain.bridge.tasks",
         "lemon_ledger.jobs.supply_snapshot",
     ],
 )
@@ -38,6 +39,14 @@ celery_app.conf.update(
         "nightly-wallet-sync": {
             "task": "lemon_ledger.sync_all_active_wallets",
             "schedule": crontab(hour=4, minute=0),
+        },
+        "bridge-learn-custody": {
+            "task": "lemon_ledger.learn_custody_addresses",
+            "schedule": crontab(hour=3, minute=0),
+        },
+        "bridge-surface-unmatched": {
+            "task": "lemon_ledger.surface_unmatched",
+            "schedule": crontab(hour=3, minute=30),
         },
     },
 )

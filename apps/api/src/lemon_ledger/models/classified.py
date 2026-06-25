@@ -65,8 +65,12 @@ class ClassifiedTransaction(Base):
     related_lots: Mapped[list[uuid.UUID] | None] = mapped_column(
         ARRAY(PGUUID(as_uuid=True)), nullable=True
     )
-    # 1.8: FK constraint added in a separate migration.
+    # 1.8: FK constraint added in migration 0008; column already in DB from initial schema.
     bridge_correlation_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    # 1.8: stamped by bridge module so engine can relocate without reading bridge_correlations.
+    relocation_source_event_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
