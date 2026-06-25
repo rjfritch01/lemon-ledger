@@ -19,7 +19,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
@@ -651,3 +651,123 @@ def test_since_filters_old_cts(det_session: Session) -> None:
     )
     assert result["auto_resolved"] == 0
     assert result["pending_created"] == 0
+
+
+# ── Dedup: both wallet perspectives, one pending row (SQL COUNT) ───────────────
+#
+# The earlier dedup test only covered re-run dedup (one wallet, same outflow
+# processed twice).  This test covers the real "both perspectives" scenario:
+# wallet_a sees the OUTFLOW, wallet_b sees the INFLOW, detection runs once
+# across both wallets, and the result must be exactly one pending row — proven
+# with a raw SQL COUNT(*) on pending_classifications, not an ORM .all() call.
+
+
+def test_dedup_both_perspectives_sql_count(det_session: Session) -> None:
+    """Outflow from wallet_a + inflow at wallet_b → COUNT(*) = 1, not 2."""
+    user = _make_user(det_session)
+    entity_a = _make_entity(det_session, user, "CrossA")
+    entity_b = _make_entity(det_session, user, "CrossB")
+    wallet_a = _make_wallet(det_session, user)
+    wallet_b = _make_wallet(det_session, user)
+    _assign(det_session, wallet_a, entity_a, effective_from=date(2023, 1, 1))
+    _assign(det_session, wallet_b, entity_b, effective_from=date(2023, 1, 1))
+    token = _make_token(det_session)
+
+    tx_hash = f"0x{uuid.uuid4().hex}"
+    outflow = _make_ct(
+        det_session,
+        wallet=wallet_a,
+        token=token,
+        classification="transfer-out",
+        tx_hash=tx_hash,
+        event_seq=0,
+    )
+    _make_ct(
+        det_session,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-in",
+        tx_hash=tx_hash,
+        event_seq=0,
+    )
+
+    result = detect_for_user(det_session, user_id=user.id)
+
+    ltk = make_logical_transfer_key(outflow.chain, tx_hash, wallet_a.id, 0)
+
+    # Raw SQL COUNT — not ORM, proves the DB constraint, not just the Python list.
+    count = det_session.execute(
+        text("SELECT count(*) FROM pending_classifications WHERE logical_transfer_key = :ltk"),
+        {"ltk": ltk},
+    ).scalar_one()
+
+    assert result["pending_created"] == 1
+    assert count == 1, (
+        f"Expected exactly 1 pending_classifications row for ltk={ltk!r}, got {count}"
+    )
+
+
+# ── v_lot_gate gate check ─────────────────────────────────────────────────────
+#
+# Confirms that a cross-entity pending row surfaces as blocking=true in v_lot_gate.
+# The view source (e) joins on: ct.wallet_id=pc.from_wallet_id, ct.tx_hash=pc.tx_hash,
+# ct.event_seq=pc.transfer_index.  If any of those keys misalign, the row vanishes
+# from the gate silently.  This is the cheapest proof that the join keys align.
+
+
+def test_cross_entity_pending_appears_in_v_lot_gate(det_session: Session) -> None:
+    """pending_classifications row for branch-2 appears in v_lot_gate as blocking."""
+    user = _make_user(det_session)
+    entity_a = _make_entity(det_session, user, "GateA")
+    entity_b = _make_entity(det_session, user, "GateB")
+    wallet_a = _make_wallet(det_session, user)
+    wallet_b = _make_wallet(det_session, user)
+    _assign(det_session, wallet_a, entity_a, effective_from=date(2023, 1, 1))
+    _assign(det_session, wallet_b, entity_b, effective_from=date(2023, 1, 1))
+    token = _make_token(det_session)
+
+    tx_hash = f"0x{uuid.uuid4().hex}"
+    outflow = _make_ct(
+        det_session,
+        wallet=wallet_a,
+        token=token,
+        classification="transfer-out",
+        tx_hash=tx_hash,
+        event_seq=0,
+    )
+    _make_ct(
+        det_session,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-in",
+        tx_hash=tx_hash,
+        event_seq=0,
+    )
+
+    detect_for_user(det_session, user_id=user.id)
+
+    # Query v_lot_gate for the outflow CT's ID.
+    gate_rows = det_session.execute(
+        text(
+            "SELECT classified_tx_id, wallet_id, reason, blocking "
+            "FROM v_lot_gate "
+            "WHERE classified_tx_id = :ct_id"
+        ),
+        {"ct_id": str(outflow.id)},
+    ).fetchall()
+
+    assert len(gate_rows) >= 1, (
+        f"outflow CT {outflow.id} not found in v_lot_gate — "
+        "join keys (wallet_id/tx_hash/event_seq) may be misaligned"
+    )
+
+    blocking_rows = [r for r in gate_rows if r.blocking]
+    assert len(blocking_rows) >= 1, (
+        f"CT {outflow.id} appears in v_lot_gate but blocking=false — "
+        "cross-entity pending must be blocking"
+    )
+
+    reasons = [r.reason for r in blocking_rows]
+    assert any("needs_classification" in r for r in reasons), (
+        f"Expected reason containing 'needs_classification', got {reasons!r}"
+    )
