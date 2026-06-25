@@ -187,13 +187,13 @@ def test_pair_and_persist_never_clobbers_user_resolved() -> None:
     user_resolved_corr = MagicMock()
     user_resolved_corr.resolved_by = "user"
 
+    _call_count = [0]
+
     def _scalar_side_effect(stmt: object) -> object:
         # First call: checking if outflow is user-resolved → return a user-resolved row.
         # All other calls → None.
-        if not hasattr(_scalar_side_effect, "calls"):
-            _scalar_side_effect.calls = 0  # type: ignore[attr-defined]
-        _scalar_side_effect.calls += 1  # type: ignore[attr-defined]
-        if _scalar_side_effect.calls == 1:
+        _call_count[0] += 1
+        if _call_count[0] == 1:
             return user_resolved_corr
         return None
 

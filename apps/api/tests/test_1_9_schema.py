@@ -77,15 +77,15 @@ async def _make_token(session: AsyncSession) -> TokenRegistry:
 
 
 def test_transfer_resolution_values() -> None:
-    assert TransferResolution.RELOCATE_INTERNAL == "relocate-internal"
-    assert TransferResolution.DISPOSAL_RELATED_PARTY == "disposal-related-party"
-    assert TransferResolution.GIFT_OUT == "gift-out"
-    assert TransferResolution.NO_OP_LOAN == "no-op-loan"
+    assert TransferResolution.RELOCATE_INTERNAL.value == "relocate-internal"
+    assert TransferResolution.DISPOSAL_RELATED_PARTY.value == "disposal-related-party"
+    assert TransferResolution.GIFT_OUT.value == "gift-out"
+    assert TransferResolution.NO_OP_LOAN.value == "no-op-loan"
     assert len(list(TransferResolution)) == 8
 
 
 def test_covered_status_values() -> None:
-    assert CoveredStatus.NO_1099_DA == "no-1099-da"
+    assert CoveredStatus.NO_1099_DA.value == "no-1099-da"
     assert len(list(CoveredStatus)) == 3
 
 
@@ -95,17 +95,17 @@ def test_adjustment_code_values() -> None:
 
 
 def test_pending_classification_kind_values() -> None:
-    assert PendingClassificationKind.CROSS_ENTITY == "cross-entity"
-    assert PendingClassificationKind.EXTERNAL_OUTFLOW == "external-outflow"
+    assert PendingClassificationKind.CROSS_ENTITY.value == "cross-entity"
+    assert PendingClassificationKind.EXTERNAL_OUTFLOW.value == "external-outflow"
 
 
 def test_pending_classification_state_values() -> None:
-    assert PendingClassificationState.NEEDS_CLASSIFICATION == "needs_classification"
+    assert PendingClassificationState.NEEDS_CLASSIFICATION.value == "needs_classification"
     assert len(list(PendingClassificationState)) == 4
 
 
 def test_chosen_classification_values() -> None:
-    assert ChosenClassification.CAPITAL_CONTRIBUTION == "capital-contribution"
+    assert ChosenClassification.CAPITAL_CONTRIBUTION.value == "capital-contribution"
     assert len(list(ChosenClassification)) == 6
 
 
