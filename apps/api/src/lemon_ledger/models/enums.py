@@ -23,3 +23,61 @@ class ClassificationKind(StrEnum):
     UNWRAP = "unwrap"
     SWAP_CREDIT_REDEMPTION = "swap-credit-redemption"
     BURN = "burn"
+
+
+# ── 1.7 lot-engine enums ──────────────────────────────────────────────────────
+
+
+class AssetClass(StrEnum):
+    FUNGIBLE = "fungible"
+    COLLECTIBLE = "collectible"
+
+
+class HoldingPeriod(StrEnum):
+    SHORT = "short"
+    LONG = "long"
+
+
+class AcquisitionType(StrEnum):
+    BUY = "buy"
+    MINT = "mint"
+    REWARD = "reward"
+    BRIDGE_IN = "bridge-in"
+    GIFT = "gift"
+    CAP_CONTRIBUTION = "cap-contribution"
+
+
+class BasisMethod(StrEnum):
+    """Allowable values for entities.default_basis_method.
+
+    Average Cost is intentionally absent: it is not permitted for US crypto
+    holdings under current IRS guidance (Rev. Proc. 2024-28).
+    """
+
+    FIFO = "fifo"
+    SPECIFIC_ID = "specific_id"
+
+
+class SelectionStrategy(StrEnum):
+    """Sub-strategy used for specific-identification disposals (audit record)."""
+
+    FIFO = "fifo"
+    HIFO = "hifo"
+    LIFO = "lifo"
+    MANUAL = "manual"
+
+
+class LotTreatment(StrEnum):
+    """Engine-internal treatment derived from ClassificationKind. Never persisted."""
+
+    ACQUIRE = "acquire"
+    DISPOSE = "dispose"
+    RELOCATE = "relocate"
+    NONE = "none"
+    PENDING = "pending"
+
+
+class LotExceptionReason(StrEnum):
+    INSUFFICIENT_LOTS = "insufficient_lots"
+    MISSING_BASIS = "missing_basis"
+    UNRESOLVED_FEE = "unresolved_fee"

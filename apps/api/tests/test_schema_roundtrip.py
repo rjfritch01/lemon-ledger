@@ -67,7 +67,7 @@ async def test_user_entity_wallet_assignment_roundtrip(db_session: AsyncSession)
     [
         ("type", "s-corp"),
         ("type", "llc-passthrough"),
-        ("default_basis_method", "hifo"),
+        ("default_basis_method", "specific_id"),
     ],
 )
 async def test_entity_check_constraint_values(

@@ -22,6 +22,7 @@ celery_app: Any = Celery(
         "lemon_ledger.tasks",
         "lemon_ledger.pricing.tasks",
         "lemon_ledger.classify.tasks",
+        "lemon_ledger.domain.lots.service",
         "lemon_ledger.jobs.supply_snapshot",
     ],
 )
