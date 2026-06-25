@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from lemon_ledger.db.base import Base, UUIDPrimaryKeyMixin
 
 _ENTITY_TYPES = "type IN ('personal','s-corp','llc-passthrough','partnership','sole-prop')"
-_BASIS_METHODS = "default_basis_method IN ('fifo','hifo','specific-id')"
+_BASIS_METHODS = "default_basis_method IN ('fifo','specific_id')"
 
 
 class Entity(UUIDPrimaryKeyMixin, Base):

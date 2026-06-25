@@ -3,6 +3,12 @@ from lemon_ledger.models.classified import ClassifiedTransaction as ClassifiedTr
 from lemon_ledger.models.classified import L2DecoderConfig as L2DecoderConfig
 from lemon_ledger.models.entity import Entity as Entity
 from lemon_ledger.models.historical_price import HistoricalPrice as HistoricalPrice
+from lemon_ledger.models.logical_asset import LogicalAsset as LogicalAsset
+from lemon_ledger.models.logical_asset import TokenAssetMembership as TokenAssetMembership
+from lemon_ledger.models.lot import LotDisposal as LotDisposal
+from lemon_ledger.models.lot import LotProcessingException as LotProcessingException
+from lemon_ledger.models.lot import LotRelocation as LotRelocation
+from lemon_ledger.models.lot import TaxLot as TaxLot
 from lemon_ledger.models.raw import RawInternalTx as RawInternalTx
 from lemon_ledger.models.raw import RawLog as RawLog
 from lemon_ledger.models.raw import RawTokenTransfer as RawTokenTransfer
