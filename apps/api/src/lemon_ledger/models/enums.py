@@ -23,6 +23,9 @@ class ClassificationKind(StrEnum):
     UNWRAP = "unwrap"
     SWAP_CREDIT_REDEMPTION = "swap-credit-redemption"
     BURN = "burn"
+    # 1.8: bridge signal classifications (set by bridge module; read by lot engine)
+    BRIDGE_IN = "bridge-in"
+    BRIDGE_OUT = "bridge-out"
 
 
 # ── 1.7 lot-engine enums ──────────────────────────────────────────────────────

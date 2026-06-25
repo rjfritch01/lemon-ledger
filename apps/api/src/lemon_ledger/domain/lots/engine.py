@@ -242,6 +242,11 @@ def _derive_treatment(event: ClassifiedTransaction) -> LotTreatment:
         return LotTreatment.DISPOSE
     if k in ("stake", "unstake", "wrap", "unwrap"):
         return LotTreatment.NONE
+    # 1.8 bridge signals: bridge-in = basis-preserving relocation; bridge-out = NONE
+    if k == "bridge-in":
+        return LotTreatment.RELOCATE
+    if k == "bridge-out":
+        return LotTreatment.NONE
     # pending, unclassified, and anything else → PENDING
     return LotTreatment.PENDING
 
@@ -362,6 +367,8 @@ def apply_event(session: Session, event: ClassifiedTransaction) -> None:
         _apply_acquire(session, event)
     elif treatment == LotTreatment.DISPOSE:
         _apply_dispose(session, event)
+    elif treatment == LotTreatment.RELOCATE:
+        _apply_bridge_relocation(session, event)
 
 
 def _apply_acquire(session: Session, event: ClassifiedTransaction) -> None:
@@ -507,6 +514,60 @@ def _apply_dispose(session: Session, event: ClassifiedTransaction) -> None:
             disposed_at=event.occurred_at,
         )
         session.add(disposal)
+
+
+# ── bridge relocation (engine-side; never reads bridge_correlations) ──────────
+
+
+def _apply_bridge_relocation(session: Session, event: ClassifiedTransaction) -> None:
+    """Drive a basis-preserving relocation for a confirmed bridge-in event.
+
+    The bridge module stamps relocation_source_event_id onto the inflow CT so
+    the engine can derive the source wallet without reading bridge_correlations.
+
+    Fee fold: outflow - inflow difference stays in source wallet as unrelocated
+    lots (future CPA queue item). The inflow quantity carries the full pro-rata
+    basis of the lots consumed at the source.
+    """
+    # Idempotency: skip if relocation already recorded for this event.
+    from sqlalchemy import select as _select
+
+    existing = session.scalar(
+        _select(LotRelocation).where(LotRelocation.classified_tx_id == event.id).limit(1)
+    )
+    if existing is not None:
+        return
+
+    source_event_id = event.relocation_source_event_id
+    if source_event_id is None:
+        _record_exception(
+            session,
+            event,
+            LotExceptionReason.MISSING_BASIS,
+            detail={"reason": "bridge-in_missing_relocation_source_event_id"},
+        )
+        return
+
+    outflow_event = session.get(ClassifiedTransaction, source_event_id)
+    if outflow_event is None:
+        _record_exception(
+            session,
+            event,
+            LotExceptionReason.MISSING_BASIS,
+            detail={
+                "reason": "bridge-in_outflow_event_not_found",
+                "source_event_id": str(source_event_id),
+            },
+        )
+        return
+
+    apply_relocation(
+        session,
+        event,
+        from_wallet_id=outflow_event.wallet_id,
+        to_wallet_id=event.wallet_id,
+        reason="bridge",
+    )
 
 
 # ── apply_relocation ──────────────────────────────────────────────────────────
