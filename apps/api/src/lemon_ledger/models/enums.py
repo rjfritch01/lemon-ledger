@@ -76,6 +76,8 @@ class LotTreatment(StrEnum):
     ACQUIRE = "acquire"
     DISPOSE = "dispose"
     RELOCATE = "relocate"
+    GIFT_OUT = "gift-out"
+    NO_OP_LOAN = "no-op-loan"
     NONE = "none"
     PENDING = "pending"
 
