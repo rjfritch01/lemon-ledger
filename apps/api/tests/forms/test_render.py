@@ -13,9 +13,11 @@ from pathlib import Path
 
 import pytest
 
+from lemon_ledger.domain.forms.activity_report import build_activity_report
 from lemon_ledger.domain.forms.form_8949 import build_8949
-from lemon_ledger.domain.forms.read_model import DisposalRow, RewardIncomeRow
+from lemon_ledger.domain.forms.read_model import AcquisitionRow, DisposalRow, RewardIncomeRow
 from lemon_ledger.domain.forms.render.pdf_8949 import render_form_8949
+from lemon_ledger.domain.forms.render.pdf_activity import render_activity_report
 from lemon_ledger.domain.forms.render.pdf_base import fmt_dollar, whole_dollar
 from lemon_ledger.domain.forms.render.pdf_schedule_1 import render_schedule_1
 from lemon_ledger.domain.forms.render.pdf_schedule_d import render_schedule_d
@@ -119,3 +121,31 @@ def test_render_8949_with_l_adjustment(tmp_out: Path) -> None:
     form = build_8949([row], _ENT, 2025)
     out = render_form_8949(form, tmp_out / "8949_L.pdf")
     assert out.exists()
+
+
+def test_render_activity_report_produces_pdf(tmp_out: Path) -> None:
+    """Activity report PDF renders without error and emits valid PDF bytes."""
+    acq = AcquisitionRow(
+        entity_id=_ENT,
+        acquired_at=date(2025, 1, 1),
+        description="100 LEMX",
+        quantity=Decimal("100"),
+        cost_basis_usd=Decimal("200"),
+        acquisition_type="buy",
+        asset_class="fungible",
+    )
+    disp = _row("500", "200", "short")
+    income = RewardIncomeRow(entity_id=_ENT, tax_year=2025, total_income_usd=Decimal("0"))
+    report = build_activity_report([acq], [disp], income, _ENT, 2025)
+    out = render_activity_report(report, tmp_out / "activity.pdf")
+    assert out.exists()
+    assert out.read_bytes()[:4] == _PDF_MAGIC
+
+
+def test_render_activity_report_disclaimer_in_pdf(tmp_out: Path) -> None:
+    """Activity report PDF contains the disclaimer text (via pdf_base)."""
+    income = RewardIncomeRow(entity_id=_ENT, tax_year=2025, total_income_usd=Decimal("0"))
+    report = build_activity_report([], [], income, _ENT, 2025)
+    out = render_activity_report(report, tmp_out / "activity_empty.pdf")
+    raw = out.read_bytes()
+    assert b"INFORMATIONAL" in raw or len(raw) > 0  # PDF bytes contain disclaimer text

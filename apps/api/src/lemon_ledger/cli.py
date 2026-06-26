@@ -338,3 +338,134 @@ def generate_8949(
         "files": [str(p8949), str(pscheDD), str(pSched1)],
     }
     typer.echo(json.dumps(manifest, indent=2))
+
+
+@forms_app.command("activity-report")
+def activity_report_cmd(
+    year: Annotated[int, typer.Option("--year", help="Tax year (e.g. 2025)")],
+    entity: Annotated[str, typer.Option("--entity", help="Entity UUID")],
+    user: Annotated[str, typer.Option("--user", help="User UUID (for audit context)")],
+    fmt: Annotated[
+        str,
+        typer.Option("--format", help="Output format: csv | pdf | both"),
+    ] = "both",
+    out: Annotated[str, typer.Option("--out", help="Output directory")] = ".",
+) -> None:
+    """Generate the informational activity / gain-loss report for a tax year.
+
+    Exit codes: 0 = success, 1 = error.
+    """
+    from pathlib import Path
+
+    from lemon_ledger.domain.forms.activity_report import build_activity_report, to_csv
+    from lemon_ledger.domain.forms.gate import check_gate
+    from lemon_ledger.domain.forms.read_model import (
+        fetch_acquisition_rows,
+        fetch_disposal_rows,
+        fetch_reward_income,
+    )
+    from lemon_ledger.domain.forms.render.pdf_activity import render_activity_report
+
+    if fmt not in ("csv", "pdf", "both"):
+        typer.echo(f"Invalid --format {fmt!r}. Choose csv, pdf, or both.", err=True)
+        raise typer.Exit(1)
+
+    try:
+        entity_id = uuid.UUID(entity)
+    except ValueError as exc:
+        typer.echo(f"Invalid entity UUID: {entity!r}", err=True)
+        raise typer.Exit(1) from exc
+
+    out_dir = Path(out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    maker = _get_sessionmaker()
+
+    with worker_session(maker) as session:
+        gate = check_gate(session, entity_id, year)
+        is_draft = gate.is_held
+
+        acquisitions = fetch_acquisition_rows(session, entity_id, year)
+        disposals = fetch_disposal_rows(session, entity_id, year)
+        reward = fetch_reward_income(session, entity_id, year)
+
+    report = build_activity_report(
+        acquisitions, disposals, reward, entity_id, year, is_draft=is_draft
+    )
+    prefix = f"activity_report_{year}_{entity_id}"
+    files = []
+
+    if fmt in ("csv", "both"):
+        csv_path = out_dir / f"{prefix}.csv"
+        csv_path.write_text(to_csv(report), encoding="utf-8")
+        files.append(str(csv_path))
+
+    if fmt in ("pdf", "both"):
+        pdf_path = out_dir / f"{prefix}.pdf"
+        render_activity_report(report, pdf_path)
+        files.append(str(pdf_path))
+
+    manifest = {
+        "tax_year": year,
+        "entity_id": str(entity_id),
+        "is_draft": is_draft,
+        "acquisitions": len(acquisitions),
+        "disposals": len(disposals),
+        "total_proceeds": str(report.total_proceeds),
+        "total_gain_loss": str(report.total_gain_loss),
+        "total_reward_income": str(report.total_reward_income),
+        "files": files,
+    }
+    typer.echo(json.dumps(manifest, indent=2))
+
+
+@forms_app.command("reconcile")
+def reconcile_cmd(
+    year: Annotated[int, typer.Option("--year", help="Tax year (e.g. 2025)")],
+    entity: Annotated[str, typer.Option("--entity", help="Entity UUID")],
+    user: Annotated[str, typer.Option("--user", help="User UUID (for audit context)")],
+    expected: Annotated[
+        str,
+        typer.Option("--expected", help="Built-in fixture ID (S1-S8) or path to JSON fixture"),
+    ],
+    draft: Annotated[
+        bool,
+        typer.Option("--draft/--no-draft", help="Allow running through held gate with DRAFT"),
+    ] = False,
+    waivers: Annotated[
+        bool,
+        typer.Option(
+            "--waivers/--no-waivers",
+            help="Treat per-figure delta > $5 as warnings only (not failures)",
+        ),
+    ] = False,
+) -> None:
+    """Reconcile actual form figures against a fixture's expected values.
+
+    Exit codes: 0 = PASS, 2 = FAIL (gate held or figure mismatch), 1 = error.
+    """
+    from lemon_ledger.domain.forms.reconcile import ReconcileResult, load_fixture, run_reconcile
+
+    try:
+        entity_id = uuid.UUID(entity)
+    except ValueError as exc:
+        typer.echo(f"Invalid entity UUID: {entity!r}", err=True)
+        raise typer.Exit(1) from exc
+
+    try:
+        fixture = load_fixture(expected)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    maker = _get_sessionmaker()
+
+    with worker_session(maker) as session:
+        result: ReconcileResult = run_reconcile(session, entity_id, year, fixture, is_draft=draft)
+
+    for line in result.summary_lines():
+        typer.echo(line)
+
+    if not result.passed and not waivers:
+        raise typer.Exit(2)
+    if waivers and not result.gate_verdict:
+        raise typer.Exit(2)

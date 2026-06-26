@@ -107,6 +107,52 @@ def fetch_disposal_rows(
     return rows
 
 
+@dataclass(frozen=True)
+class AcquisitionRow:
+    """One tax lot acquired in the tax year, for the activity report."""
+
+    entity_id: uuid.UUID
+    acquired_at: date
+    description: str  # "{qty} {symbol}"
+    quantity: Decimal
+    cost_basis_usd: Decimal
+    acquisition_type: str
+    asset_class: str
+
+
+def fetch_acquisition_rows(
+    session: Session,
+    entity_id: uuid.UUID,
+    tax_year: int,
+) -> list[AcquisitionRow]:
+    """Return all lots acquired by entity in tax_year, ordered by acquired_at."""
+    stmt = (
+        select(TaxLot, TokenRegistry.symbol)
+        .join(TokenRegistry, TokenRegistry.id == TaxLot.acquired_token_id)
+        .where(
+            TaxLot.entity_id == entity_id,
+            extract("year", TaxLot.acquired_at) == tax_year,
+        )
+        .order_by(TaxLot.acquired_at, TaxLot.id)
+    )
+    rows: list[AcquisitionRow] = []
+    for lot, symbol in session.execute(stmt):
+        qty_str = str(lot.quantity.normalize())
+        acquired = lot.acquired_at
+        rows.append(
+            AcquisitionRow(
+                entity_id=lot.entity_id,
+                acquired_at=acquired.date() if isinstance(acquired, datetime) else acquired,
+                description=f"{qty_str} {symbol}",
+                quantity=lot.quantity,
+                cost_basis_usd=lot.cost_basis_usd,
+                acquisition_type=lot.acquisition_type,
+                asset_class=lot.asset_class,
+            )
+        )
+    return rows
+
+
 def fetch_reward_income(
     session: Session,
     entity_id: uuid.UUID,
