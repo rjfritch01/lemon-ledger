@@ -109,3 +109,86 @@ def sync_all_active_wallets() -> dict[str, Any]:
     for wid in wallet_ids:
         sync_wallet_task.apply_async(args=[str(wid)])
     return {"dispatched": len(wallet_ids)}
+
+
+@celery_app.task(  # type: ignore[untyped-decorator]
+    name="lemon_ledger.run_user_lot_pipeline",
+    bind=True,
+    autoretry_for=(sqlalchemy.exc.OperationalError,),
+    retry_backoff=True,
+    max_retries=3,
+)
+def run_user_lot_pipeline_task(
+    self: Any,
+    user_id: str,
+    *,
+    _session: Any = None,
+) -> dict[str, Any]:
+    """Per-user pipeline: cross-entity detection → apply_lots for all wallets.
+
+    Must run AFTER classify_wallet completes for all user wallets.
+    Ordering guarantee: wire as a separate beat task or chain downstream of
+    classify completion; never inline during raw sync.
+
+    Steps:
+      1. run_cross_entity_detection (stamps transfer_resolution on CTs)
+      2. apply_lots_for_wallet for each wallet (lot engine reads resolved signals)
+    """
+    from lemon_ledger.domain.cross_entity.tasks import _run_inner as _detect
+    from lemon_ledger.domain.lots.engine import apply_event
+    from lemon_ledger.models.classified import ClassifiedTransaction
+
+    uid = uuid.UUID(user_id)
+
+    if _session is not None:
+        return _run_pipeline(_session, uid, _detect, apply_event, ClassifiedTransaction)
+
+    settings = get_settings()
+    res = resources.ensure(settings)
+
+    with worker_session(res.sessionmaker) as session:
+        result = _run_pipeline(session, uid, _detect, apply_event, ClassifiedTransaction)
+    return result
+
+
+def _run_pipeline(
+    session: Any,
+    user_id: uuid.UUID,
+    detect_fn: Any,
+    apply_event_fn: Any,
+    ct_cls: Any,
+) -> dict[str, Any]:
+    detect_counts = detect_fn(session, user_id, None)
+
+    wallet_ids = list(
+        session.scalars(
+            select(Wallet.id).where(
+                Wallet.user_id == user_id,
+                Wallet.is_active == True,  # noqa: E712
+            )
+        ).all()
+    )
+
+    events_applied = 0
+    for wid in wallet_ids:
+        events = session.scalars(
+            select(ct_cls)
+            .where(ct_cls.wallet_id == wid)
+            .order_by(
+                ct_cls.occurred_at,
+                ct_cls.block_number,
+                ct_cls.event_seq,
+                ct_cls.id,
+            )
+        ).all()
+        for event in events:
+            apply_event_fn(session, event)
+            events_applied += 1
+    session.commit()
+
+    return {
+        "user_id": str(user_id),
+        "wallets": len(wallet_ids),
+        "events_applied": events_applied,
+        **detect_counts,
+    }

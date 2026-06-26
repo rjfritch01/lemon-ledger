@@ -16,6 +16,7 @@ from lemon_ledger.domain.forms.render.pdf_base import (
     HEADER_SIZE,
     TITLE_SIZE,
     build_doc,
+    disclaimer_paragraph,
     fmt_dollar,
     header_style,
     totals_style,
@@ -123,6 +124,7 @@ def render_form_8949(result: Form8949Result, out_path: Path) -> Path:
         story.append(totals)
         story.append(Spacer(1, 0.05 * inch))
 
+    story.append(disclaimer_paragraph())
     doc = build_doc(out_path)
     doc.build(story)
     return out_path

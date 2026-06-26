@@ -24,6 +24,7 @@ celery_app: Any = Celery(
         "lemon_ledger.classify.tasks",
         "lemon_ledger.domain.lots.service",
         "lemon_ledger.domain.bridge.tasks",
+        "lemon_ledger.domain.cross_entity.tasks",
         "lemon_ledger.jobs.supply_snapshot",
     ],
 )

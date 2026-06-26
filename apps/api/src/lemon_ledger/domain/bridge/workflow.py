@@ -239,15 +239,34 @@ def resolve_unmatched(
 # ── surface_aged_unmatched ────────────────────────────────────────────────────
 
 
-def surface_aged_unmatched(session: Session) -> list[BridgeCorrelation]:
-    """Age-out unmatched legs older than 7 days → taxable-fallback signal.
+_SYNC_WATERMARK_BUFFER = timedelta(hours=24)
 
-    TODO: gate on both chains synced past leg timestamp before applying
-    the taxable fallback (watermark refinement deferred to a later chat).
+
+def _wallet_synced_past(session: Session, wallet_id: uuid.UUID, ts: datetime) -> bool:
+    """Return True iff *wallet_id* has been synced past *ts* + SYNC_WATERMARK_BUFFER.
+
+    Prevents false-positive taxable-fallback surfacing when the counterparty
+    chain is simply not yet ingested to the leg's block height.
+    """
+    from lemon_ledger.models.wallet import Wallet
+
+    w = session.get(Wallet, wallet_id)
+    if w is None or w.last_synced_at is None:
+        return False
+    return w.last_synced_at >= ts + _SYNC_WATERMARK_BUFFER
+
+
+def surface_aged_unmatched(session: Session) -> list[BridgeCorrelation]:
+    """Age-out unmatched legs → taxable-fallback signal.
+
+    Two conditions must hold before a leg is surfaced:
+      1. created_at older than _AGED_UNMATCHED_WINDOW (7 days) — time-based gate.
+      2. Sync-watermark gate: the relevant wallet must be synced past the leg
+         timestamp + 24 h buffer so we don't surface a leg that simply hasn't
+         been ingested on the counterparty chain yet.
     """
     cutoff = datetime.now(UTC) - _AGED_UNMATCHED_WINDOW
 
-    # Find unmatched singletons with no user resolution where the leg is old.
     aged = session.scalars(
         select(BridgeCorrelation).where(
             BridgeCorrelation.status == BridgeStatus.UNMATCHED,
@@ -258,14 +277,19 @@ def surface_aged_unmatched(session: Session) -> list[BridgeCorrelation]:
 
     surfaced: list[BridgeCorrelation] = []
     for corr in aged:
-        # Restore taxable classification on the leg.
-        set_classification_signal(session, corr, confirmed=False)
-        # Mark for UI surfacing — non-blocking, ends up in v_lot_gate.
         leg_id = corr.outflow_classified_event_id or corr.inflow_classified_event_id
-        if leg_id is not None:
-            ct = session.get(ClassifiedTransaction, leg_id)
-            if ct is not None:
-                ct.needs_review = True
+        if leg_id is None:
+            continue
+        ct = session.get(ClassifiedTransaction, leg_id)
+        if ct is None:
+            continue
+
+        # Sync-watermark gate: skip if the wallet hasn't caught up yet.
+        if not _wallet_synced_past(session, ct.wallet_id, ct.occurred_at):
+            continue
+
+        set_classification_signal(session, corr, confirmed=False)
+        ct.needs_review = True
 
         _write_audit(
             session,

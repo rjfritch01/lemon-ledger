@@ -14,6 +14,7 @@ from lemon_ledger.domain.forms.render.pdf_base import (
     FONT_SIZE,
     TITLE_SIZE,
     build_doc,
+    disclaimer_paragraph,
     fmt_dollar,
     totals_style,
 )
@@ -43,6 +44,7 @@ def render_schedule_1(result: Schedule1Result, out_path: Path) -> Path:
     t.setStyle(totals_style())
     story.append(t)
 
+    story.append(disclaimer_paragraph())
     doc = build_doc(out_path)
     doc.build(story)
     return out_path
