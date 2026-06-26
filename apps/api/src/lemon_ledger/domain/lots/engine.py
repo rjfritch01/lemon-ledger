@@ -324,21 +324,27 @@ def _asset_class(session: Session, event: ClassifiedTransaction) -> AssetClass:
 # ── Entity resolution ─────────────────────────────────────────────────────────
 
 
-def _resolve_entity_id(session: Session, event: ClassifiedTransaction) -> uuid.UUID | None:
-    """Find the entity owning this wallet at event time via the SCD table."""
+def _resolve_entity_for_wallet(
+    session: Session, wallet_id: uuid.UUID, as_of: datetime
+) -> uuid.UUID | None:
+    """Return the entity owning wallet_id at as_of via the SCD table."""
     assignment = session.scalar(
         select(WalletEntityAssignment)
         .where(
-            WalletEntityAssignment.wallet_id == event.wallet_id,
-            WalletEntityAssignment.effective_from <= event.occurred_at.date(),
+            WalletEntityAssignment.wallet_id == wallet_id,
+            WalletEntityAssignment.effective_from <= as_of.date(),
             or_(
                 WalletEntityAssignment.effective_to.is_(None),
-                WalletEntityAssignment.effective_to >= event.occurred_at.date(),
+                WalletEntityAssignment.effective_to >= as_of.date(),
             ),
         )
         .limit(1)
     )
     return assignment.entity_id if assignment else None
+
+
+def _resolve_entity_id(session: Session, event: ClassifiedTransaction) -> uuid.UUID | None:
+    return _resolve_entity_for_wallet(session, event.wallet_id, event.occurred_at)
 
 
 # ── Basis method resolution ───────────────────────────────────────────────────
@@ -647,8 +653,14 @@ def apply_relocation(
     method = Fifo()
     slices = consume(method, lots_to_move, event.amount)
 
+    # Resolve destination entity once; update lot.entity_id when the lot crosses
+    # an entity boundary so form generators can filter by entity_id reliably.
+    dest_entity_id = _resolve_entity_for_wallet(session, to_wallet_id, event.occurred_at)
+
     for s in slices:
         s.lot.wallet_id = to_wallet_id
+        if dest_entity_id is not None and dest_entity_id != s.lot.entity_id:
+            s.lot.entity_id = dest_entity_id
         session.add(s.lot)
 
         relocation = LotRelocation(

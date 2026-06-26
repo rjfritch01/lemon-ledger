@@ -771,3 +771,274 @@ def test_t7_relocate_gift_sets_gift_type_and_709(db: Session) -> None:
     # 709 flag set on the INFLOW ct (the relocation trigger event)
     db.refresh(inflow)
     assert inflow.needs_review is True
+
+
+# ── T8–T11: entity_id maintenance during relocation ──────────────────────────
+#
+# Fix for Stage-4 gap: apply_relocation must update lot.entity_id when a lot
+# crosses an entity boundary, so form generators can filter by entity_id.
+
+
+def test_t8_relocate_contribution_updates_entity_id(db: Session) -> None:
+    """Cross-entity relocate-contribution: lot.entity_id flips to destination entity."""
+    user = _user(db)
+    ent_a = _entity(db, user, "A")
+    ent_b = _entity(db, user, "B")
+    wallet_a = _wallet(db, user)
+    wallet_b = _wallet(db, user)
+    _assign(db, wallet_a, ent_a)
+    _assign(db, wallet_b, ent_b)
+    token = _token(db)
+
+    acq = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="reward",
+        amount="10",
+        value_usd="100",
+        occurred_at=_ACQUIRE_AT,
+    )
+    apply_event(db, acq)
+    db.flush()
+
+    lot = db.scalar(select(TaxLot).where(TaxLot.source_classified_tx_id == acq.id))
+    assert lot is not None
+    assert lot.entity_id == ent_a.id, "Acquired lot must belong to source entity"
+
+    tx = f"0x{uuid.uuid4().hex}"
+    out = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="transfer-out",
+        amount="10",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=0,
+        transfer_resolution="relocate-contribution",
+    )
+    inflow = _ct(
+        db,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-in",
+        amount="10",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=1,
+        transfer_resolution="relocate-contribution",
+        relocation_source_event_id=out.id,
+    )
+    apply_event(db, out)
+    apply_event(db, inflow)
+    db.flush()
+
+    db.refresh(lot)
+    assert lot.wallet_id == wallet_b.id
+    assert lot.entity_id == ent_b.id, "entity_id must update to destination entity after relocation"
+    # Basis and tacking preserved
+    assert lot.cost_basis_usd == Decimal("100")
+    assert lot.acquired_at == _ACQUIRE_AT
+
+
+def test_t9_relocate_gift_updates_entity_id(db: Session) -> None:
+    """Cross-entity relocate-gift: lot.entity_id flips to destination entity."""
+    user = _user(db)
+    ent_a = _entity(db, user, "A")
+    ent_b = _entity(db, user, "B")
+    wallet_a = _wallet(db, user)
+    wallet_b = _wallet(db, user)
+    _assign(db, wallet_a, ent_a)
+    _assign(db, wallet_b, ent_b)
+    token = _token(db)
+
+    acq = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="reward",
+        amount="5",
+        value_usd="50",
+        occurred_at=_ACQUIRE_AT,
+    )
+    apply_event(db, acq)
+    db.flush()
+
+    tx = f"0x{uuid.uuid4().hex}"
+    out = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="transfer-out",
+        amount="5",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=0,
+        transfer_resolution="relocate-gift",
+    )
+    inflow = _ct(
+        db,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-in",
+        amount="5",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=1,
+        transfer_resolution="relocate-gift",
+        relocation_source_event_id=out.id,
+    )
+    apply_event(db, out)
+    apply_event(db, inflow)
+    db.flush()
+
+    lot = db.scalar(select(TaxLot).where(TaxLot.source_classified_tx_id == acq.id))
+    assert lot is not None
+    assert lot.wallet_id == wallet_b.id
+    assert lot.entity_id == ent_b.id, "relocate-gift must update entity_id to destination entity"
+    assert lot.acquisition_type == "gift"  # acquisition_type updated by existing Stage-4 logic
+
+
+def test_t10_relocate_internal_same_entity_entity_id_unchanged(db: Session) -> None:
+    """Relocate-internal within the same entity: entity_id must NOT change."""
+    user = _user(db)
+    ent = _entity(db, user, "A")
+    wallet_a = _wallet(db, user)
+    wallet_b = _wallet(db, user)
+    _assign(db, wallet_a, ent)
+    _assign(db, wallet_b, ent)  # same entity, different wallet
+    token = _token(db)
+
+    acq = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="reward",
+        amount="10",
+        value_usd="100",
+        occurred_at=_ACQUIRE_AT,
+    )
+    apply_event(db, acq)
+    db.flush()
+
+    tx = f"0x{uuid.uuid4().hex}"
+    out = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="transfer-out",
+        amount="10",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=0,
+        transfer_resolution="relocate-internal",
+    )
+    inflow = _ct(
+        db,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-in",
+        amount="10",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=1,
+        transfer_resolution="relocate-internal",
+        relocation_source_event_id=out.id,
+    )
+    apply_event(db, out)
+    apply_event(db, inflow)
+    db.flush()
+
+    lot = db.scalar(select(TaxLot).where(TaxLot.source_classified_tx_id == acq.id))
+    assert lot is not None
+    assert lot.wallet_id == wallet_b.id
+    assert lot.entity_id == ent.id, "relocate-internal (same entity) must leave entity_id unchanged"
+
+
+def test_t11_disposal_of_relocated_lot_attributes_to_destination_entity(db: Session) -> None:
+    """After cross-entity relocation, a subsequent disposal's lot.entity_id == destination entity.
+
+    This is the core Form 8949 attribution test: generators filter WHERE
+    tax_lots.entity_id = :entity. Without the fix, relocated lots kept the source
+    entity_id and would be misattributed to Entity A instead of Entity B.
+    """
+    user = _user(db)
+    ent_a = _entity(db, user, "A")
+    ent_b = _entity(db, user, "B")
+    wallet_a = _wallet(db, user)
+    wallet_b = _wallet(db, user)
+    _assign(db, wallet_a, ent_a)
+    _assign(db, wallet_b, ent_b)
+    token = _token(db)
+
+    # Acquire in entity A
+    acq = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="reward",
+        amount="10",
+        value_usd="100",
+        occurred_at=_ACQUIRE_AT,
+    )
+    apply_event(db, acq)
+    db.flush()
+
+    # Relocate to entity B (capital contribution)
+    tx = f"0x{uuid.uuid4().hex}"
+    out = _ct(
+        db,
+        wallet=wallet_a,
+        token=token,
+        classification="transfer-out",
+        amount="10",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=0,
+        transfer_resolution="relocate-contribution",
+    )
+    inflow = _ct(
+        db,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-in",
+        amount="10",
+        occurred_at=_CROSS_AT,
+        tx_hash=tx,
+        event_seq=1,
+        transfer_resolution="relocate-contribution",
+        relocation_source_event_id=out.id,
+    )
+    apply_event(db, out)
+    apply_event(db, inflow)
+    db.flush()
+
+    # Dispose from entity B's wallet (holding period tacks: 18 months total → LONG)
+    dis = _ct(
+        db,
+        wallet=wallet_b,
+        token=token,
+        classification="transfer-out",
+        amount="10",
+        value_usd="200",
+        occurred_at=_DISPOSE_AT,
+    )
+    apply_event(db, dis)
+    db.flush()
+
+    disposal = db.scalar(select(LotDisposal).where(LotDisposal.disposal_tx_id == dis.id))
+    assert disposal is not None, "Disposal must be written after cross-entity relocation"
+
+    # The consumed lot must attribute to entity B, not entity A
+    lot = db.get(TaxLot, disposal.lot_id)
+    assert lot is not None
+    assert lot.entity_id == ent_b.id, (
+        "Disposed lot must attribute to DESTINATION entity (B), not source entity (A). "
+        "A stale entity_id here would cause Form 8949 to misattribute the disposal."
+    )
+    assert lot.entity_id != ent_a.id
+
+    # Holding period tacks: acquired Jan 2024, disposed Jul 2025 = 18 months → LONG
+    assert disposal.holding_period == "long"
+    assert disposal.gain_loss_usd == Decimal("100")  # $200 proceeds − $100 basis

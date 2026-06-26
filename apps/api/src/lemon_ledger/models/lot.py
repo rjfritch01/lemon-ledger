@@ -73,8 +73,6 @@ class TaxLot(UUIDPrimaryKeyMixin, Base):
     logical_asset_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("logical_assets.id", ondelete="RESTRICT"), nullable=True
     )
-    # Denormalized: entity at acquisition time. NOT used for lot selection — use
-    # wallet_entity_assignments SCD for report-time resolution.
     entity_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("entities.id", ondelete="RESTRICT"), nullable=False
     )
