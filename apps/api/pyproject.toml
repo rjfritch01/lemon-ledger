@@ -19,6 +19,7 @@ dependencies = [
     "structlog>=24.1",
     "uuid-utils>=0.16.1",
     "python-dateutil>=2.9",
+    "reportlab>=4.2",
 ]
 
 [dependency-groups]
@@ -65,7 +66,7 @@ python_version = "3.12"
 plugins = ["sqlalchemy.ext.mypy.plugin", "pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*", "asyncpg.*", "celery.*", "celery.utils.log.*", "kombu.*"]
+module = ["testcontainers.*", "asyncpg.*", "celery.*", "celery.utils.log.*", "kombu.*", "reportlab.*"]
 ignore_missing_imports = true
 
 [tool.bandit]

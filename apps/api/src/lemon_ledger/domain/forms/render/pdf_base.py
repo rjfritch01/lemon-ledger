@@ -1,0 +1,80 @@
+"""Shared reportlab helpers for substitute-form PDF generation (IRS Pub 1179)."""
+
+from __future__ import annotations
+
+from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, TableStyle
+
+PAGE_WIDTH, PAGE_HEIGHT = letter
+LEFT_MARGIN = 0.5 * inch
+RIGHT_MARGIN = 0.5 * inch
+TOP_MARGIN = 0.5 * inch
+BOTTOM_MARGIN = 0.5 * inch
+
+FONT_NORMAL = "Helvetica"
+FONT_BOLD = "Helvetica-Bold"
+FONT_SIZE = 8
+HEADER_SIZE = 10
+TITLE_SIZE = 12
+
+_CENT = Decimal("0.01")
+
+
+def whole_dollar(value: Decimal) -> int:
+    """Round to whole dollar at render time.  Ledger keeps full NUMERIC precision."""
+    rounded = value.quantize(_CENT, rounding=ROUND_HALF_UP)
+    return int(rounded.to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def fmt_dollar(value: Decimal) -> str:
+    d = whole_dollar(value)
+    neg = d < 0
+    return f"({abs(d):,})" if neg else f"{d:,}"
+
+
+def build_doc(path: Path) -> SimpleDocTemplate:
+    return SimpleDocTemplate(
+        str(path),
+        pagesize=letter,
+        leftMargin=LEFT_MARGIN,
+        rightMargin=RIGHT_MARGIN,
+        topMargin=TOP_MARGIN,
+        bottomMargin=BOTTOM_MARGIN,
+    )
+
+
+def header_style() -> TableStyle:
+    return TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("FONTNAME", (0, 1), (-1, -1), FONT_NORMAL),
+            ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
+            ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 1), (0, -1), "LEFT"),
+        ]
+    )
+
+
+def totals_style() -> TableStyle:
+    return TableStyle(
+        [
+            ("FONTNAME", (0, 0), (-1, -1), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, -1), FONT_SIZE),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#e8e8e8")),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ]
+    )
