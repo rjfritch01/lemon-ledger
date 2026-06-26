@@ -19,7 +19,7 @@ dependencies = [
     "structlog>=24.1",
     "uuid-utils>=0.16.1",
     "python-dateutil>=2.9",
-    "reportlab==5.0.0",
+    "reportlab==4.5.1",
 ]
 
 [dependency-groups]
