@@ -41,7 +41,9 @@ _HOLDING_PERIODS = ", ".join(f"'{k.value}'" for k in HoldingPeriod)
 _ACQ_TYPES = ", ".join(f"'{k.value}'" for k in AcquisitionType)
 _SEL_STRATEGIES = ", ".join(f"'{k.value}'" for k in SelectionStrategy)
 _EXCEPTION_REASONS = ", ".join(f"'{k.value}'" for k in LotExceptionReason)
-_RELOCATION_REASONS = "'wrap','unwrap','bridge','cap-contribution','gift','loan'"
+_RELOCATION_REASONS = (
+    "'wrap','unwrap','bridge','cap-contribution','gift','loan','internal','reassignment'"
+)
 _COVERED_STATUSES = ", ".join(f"'{k.value}'" for k in CoveredStatus)
 _ADJ_CODES = ", ".join(f"'{k.value}'" for k in AdjustmentCode)
 

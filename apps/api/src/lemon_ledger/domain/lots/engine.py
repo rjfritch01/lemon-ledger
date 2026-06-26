@@ -32,12 +32,14 @@ from lemon_ledger.models.classified import ClassifiedTransaction
 from lemon_ledger.models.entity import Entity
 from lemon_ledger.models.enums import (
     AcquisitionType,
+    AdjustmentCode,
     AssetClass,
     BasisMethod,
     HoldingPeriod,
     LotExceptionReason,
     LotTreatment,
     SelectionStrategy,
+    TransferResolution,
 )
 from lemon_ledger.models.logical_asset import LogicalAsset, TokenAssetMembership
 from lemon_ledger.models.lot import (
@@ -224,8 +226,44 @@ def _holding_period(acquired_at: datetime, disposed_at: datetime) -> HoldingPeri
 
 # ── Treatment mapping ─────────────────────────────────────────────────────────
 
+_RELOCATE_RESOLUTIONS = frozenset(
+    {
+        TransferResolution.RELOCATE_INTERNAL.value,
+        TransferResolution.RELOCATE_CONTRIBUTION.value,
+        TransferResolution.RELOCATE_GIFT.value,
+        TransferResolution.RELOCATE_REASSIGNMENT.value,
+    }
+)
+
+
+def _treatment_from_resolution(event: ClassifiedTransaction) -> LotTreatment:
+    """Map transfer_resolution to a LotTreatment.
+
+    Relocate-* outflow legs (no relocation_source_event_id) → NONE.
+    Relocate-* inflow legs (relocation_source_event_id set) → RELOCATE.
+    """
+    res = event.transfer_resolution
+    if res in _RELOCATE_RESOLUTIONS:
+        if event.relocation_source_event_id is not None:
+            return LotTreatment.RELOCATE
+        return LotTreatment.NONE
+    if res in (
+        TransferResolution.DISPOSAL.value,
+        TransferResolution.DISPOSAL_RELATED_PARTY.value,
+    ):
+        return LotTreatment.DISPOSE
+    if res == TransferResolution.GIFT_OUT.value:
+        return LotTreatment.GIFT_OUT
+    if res == TransferResolution.NO_OP_LOAN.value:
+        return LotTreatment.NO_OP_LOAN
+    return LotTreatment.PENDING
+
 
 def _derive_treatment(event: ClassifiedTransaction) -> LotTreatment:
+    # Stage 4: transfer_resolution takes precedence over classification.
+    if event.transfer_resolution is not None:
+        return _treatment_from_resolution(event)
+
     k = event.classification
     if k in ("reward", "mint", "transfer-in"):
         return LotTreatment.ACQUIRE
@@ -368,7 +406,14 @@ def apply_event(session: Session, event: ClassifiedTransaction) -> None:
     elif treatment == LotTreatment.DISPOSE:
         _apply_dispose(session, event)
     elif treatment == LotTreatment.RELOCATE:
-        _apply_bridge_relocation(session, event)
+        if event.transfer_resolution is not None:
+            _apply_cross_entity_relocation(session, event)
+        else:
+            _apply_bridge_relocation(session, event)
+    elif treatment == LotTreatment.GIFT_OUT:
+        _apply_gift_out(session, event)
+    elif treatment == LotTreatment.NO_OP_LOAN:
+        event.needs_review = True
 
 
 def _apply_acquire(session: Session, event: ClassifiedTransaction) -> None:
@@ -494,11 +539,19 @@ def _apply_dispose(session: Session, event: ClassifiedTransaction) -> None:
         return
 
     lines = build_lines(slices, proceeds, event.occurred_at, selection_strategy)
+    is_related_party = event.transfer_resolution == TransferResolution.DISPOSAL_RELATED_PARTY.value
 
     for line in lines:
         # Decrement quantity_remaining on the lot (atomic with the disposal insert).
         line.lot.quantity_remaining -= line.quantity_consumed
         session.add(line.lot)
+
+        # §267 related-party: disallow the loss; gains pass through unchanged.
+        adjustment_code: str | None = None
+        adjustment_usd: Decimal | None = None
+        if is_related_party and line.gain_loss_usd < Decimal(0):
+            adjustment_code = AdjustmentCode.L.value
+            adjustment_usd = abs(line.gain_loss_usd)
 
         disposal = LotDisposal(
             lot_id=line.lot.id,
@@ -512,6 +565,8 @@ def _apply_dispose(session: Session, event: ClassifiedTransaction) -> None:
             selection_strategy=line.selection_strategy.value,
             selected_at=line.selected_at,
             disposed_at=event.occurred_at,
+            adjustment_code=adjustment_code,
+            adjustment_usd=adjustment_usd,
         )
         session.add(disposal)
 
@@ -605,6 +660,149 @@ def apply_relocation(
             occurred_at=event.occurred_at,
         )
         session.add(relocation)
+
+
+# ── cross-entity relocation (transfer_resolution-driven) ──────────────────────
+
+_RELOCATION_REASON: dict[str, str] = {
+    TransferResolution.RELOCATE_INTERNAL.value: "internal",
+    TransferResolution.RELOCATE_CONTRIBUTION.value: "cap-contribution",
+    TransferResolution.RELOCATE_GIFT.value: "gift",
+    TransferResolution.RELOCATE_REASSIGNMENT.value: "reassignment",
+}
+
+_RELOCATION_ACQ_TYPE: dict[str, AcquisitionType] = {
+    TransferResolution.RELOCATE_CONTRIBUTION.value: AcquisitionType.CAP_CONTRIBUTION,
+    TransferResolution.RELOCATE_GIFT.value: AcquisitionType.GIFT,
+}
+
+
+def _apply_cross_entity_relocation(session: Session, event: ClassifiedTransaction) -> None:
+    """Basis-preserving relocation for resolved cross-entity and internal transfers.
+
+    The inflow CT carries relocation_source_event_id pointing to the outflow CT,
+    matching the 1.8 bridge convention.  The outflow leg is treated as NONE.
+
+    Post-relocation, acquisition_type is set per the transfer_resolution:
+      relocate-contribution → 'cap-contribution'
+      relocate-gift         → 'gift' + needs_review=True (Form 709)
+      relocate-internal     → preserved (no change)
+      relocate-reassignment → preserved (no change)
+    """
+    existing = session.scalar(
+        select(LotRelocation).where(LotRelocation.classified_tx_id == event.id).limit(1)
+    )
+    if existing is not None:
+        return
+
+    source_event_id = event.relocation_source_event_id
+    if source_event_id is None:
+        _record_exception(
+            session,
+            event,
+            LotExceptionReason.MISSING_BASIS,
+            detail={"reason": "cross-entity_relocation_missing_source_event_id"},
+        )
+        return
+
+    outflow_event = session.get(ClassifiedTransaction, source_event_id)
+    if outflow_event is None:
+        _record_exception(
+            session,
+            event,
+            LotExceptionReason.MISSING_BASIS,
+            detail={
+                "reason": "cross-entity_relocation_outflow_not_found",
+                "source_event_id": str(source_event_id),
+            },
+        )
+        return
+
+    res = event.transfer_resolution or ""
+    reason = _RELOCATION_REASON.get(res, "bridge")
+    apply_relocation(
+        session,
+        event,
+        from_wallet_id=outflow_event.wallet_id,
+        to_wallet_id=event.wallet_id,
+        reason=reason,
+    )
+
+    # Set acquisition_type on relocated lots if the resolution requires it.
+    new_acq_type = _RELOCATION_ACQ_TYPE.get(res)
+    if new_acq_type is not None:
+        relocated_lot_ids = list(
+            session.scalars(
+                select(LotRelocation.lot_id).where(LotRelocation.classified_tx_id == event.id)
+            ).all()
+        )
+        for lot_id in relocated_lot_ids:
+            lot = session.get(TaxLot, lot_id)
+            if lot is not None:
+                lot.acquisition_type = new_acq_type.value
+                session.add(lot)
+
+    if res == TransferResolution.RELOCATE_GIFT.value:
+        event.needs_review = True
+
+
+# ── gift-out (third-party gift; no disposal, no gain/loss, Form 709) ──────────
+
+
+def _apply_gift_out(session: Session, event: ClassifiedTransaction) -> None:
+    """Consume lots for a gift-out.  No LotDisposal is written.
+
+    A LotRelocation with reason='gift' and from==to serves as the idempotency
+    anchor (no FK or CHECK violation; semantics: lot exited the pool as a gift).
+    needs_review=True flags the event for Form 709 review.
+    """
+    existing = session.scalar(
+        select(LotRelocation).where(LotRelocation.classified_tx_id == event.id).limit(1)
+    )
+    if existing is not None:
+        return
+
+    token_id = event.token_id
+    if token_id is None:
+        _record_exception(
+            session,
+            event,
+            LotExceptionReason.MISSING_BASIS,
+            detail={"reason": "no_token_id_on_classified_tx"},
+        )
+        return
+
+    lots = open_lots(session, event.wallet_id, token_id, for_update=True)
+    basis_method, _ = _resolve_basis_method(session, event)
+    method = _method_for(basis_method)
+
+    try:
+        slices = consume(method, lots, event.amount)
+    except InsufficientLotsError as exc:
+        _record_exception(
+            session,
+            event,
+            LotExceptionReason.INSUFFICIENT_LOTS,
+            detail={"classification": event.classification},
+            quantity_unmatched=exc.quantity_unmatched,
+        )
+        return
+
+    for s in slices:
+        s.lot.quantity_remaining -= s.quantity_consumed
+        session.add(s.lot)
+        session.add(
+            LotRelocation(
+                lot_id=s.lot.id,
+                from_wallet_id=event.wallet_id,
+                to_wallet_id=event.wallet_id,  # self-ref: idempotency anchor for gift-out
+                reason="gift",
+                classified_tx_id=event.id,
+                occurred_at=event.occurred_at,
+            )
+        )
+
+    event.needs_review = True
 
 
 # ── rebuild_wallet ────────────────────────────────────────────────────────────

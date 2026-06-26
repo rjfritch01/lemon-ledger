@@ -101,3 +101,17 @@ Pre-commit vs CI drift — recorded instances:
   `domain/cross_entity/resolve.py` enforces which `ChosenClassification` values
   are valid per `PendingClassificationKind`. Intentionally NOT a DB cross-column
   CHECK constraint — the DB only validates that each column value is in-set.
+- **⚠ KNOWN LIMITATION — Cross-entity/external encumbrance is GATE-LEVEL, not
+  engine-level, in v1.** The lot engine (`domain/lots/engine.py`) cannot distinguish
+  an unresolved cross-entity/external leg (`transfer_resolution NULL`,
+  `classification 'transfer-out'`) from an ordinary taxable transfer-out, because
+  the distinguishing signal lives in `pending_classifications`, which the engine must
+  not read (1.3 invariant: engine never reads pending_classifications). The
+  phantom-disposal property is preserved UPSTREAM: `needs_classification` →
+  `v_lot_gate` blocks the wallet → cross-entity pass precedes lot apply →
+  `generate-8949` refuses on a held gate. **CONSEQUENCE:** any new caller wiring
+  work into the lot engine MUST run downstream of the gate / cross-entity pass;
+  calling `apply_event` directly on a wallet with unresolved legs would dispose
+  them. Tracked in ADR-0003. A future hardening option is for detection.py to stamp
+  an engine-visible PENDING marker on Branch 2/3 legs (deferred — would need a
+  `transfer_resolution` CHECK extension).
