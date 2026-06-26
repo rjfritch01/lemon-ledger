@@ -17,7 +17,9 @@ from lemon_ledger.models.wallet_entity_assignment import WalletEntityAssignment
 
 app = typer.Typer(name="lemon-ledger", no_args_is_help=True)
 wallet_app = typer.Typer(no_args_is_help=True)
+forms_app = typer.Typer(no_args_is_help=True)
 app.add_typer(wallet_app, name="wallet")
+app.add_typer(forms_app, name="forms")
 
 _ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
@@ -222,3 +224,117 @@ def classify_cmd(
 
     result = classify_wallet_task.apply(args=[wallet_id]).get()
     typer.echo(json.dumps(result, indent=2))
+
+
+# ── forms ─────────────────────────────────────────────────────────────────────
+
+
+@forms_app.command("generate-8949")
+def generate_8949(
+    year: Annotated[int, typer.Option("--year", help="Tax year (e.g. 2025)")],
+    entity: Annotated[str, typer.Option("--entity", help="Entity UUID")],
+    user: Annotated[str, typer.Option("--user", help="User UUID (for audit context)")],
+    draft: Annotated[
+        bool,
+        typer.Option("--draft/--no-draft", help="Proceed through gate with DRAFT watermark"),
+    ] = False,
+    out: Annotated[
+        str,
+        typer.Option("--out", help="Output directory"),
+    ] = ".",
+    recompute: Annotated[
+        bool,
+        typer.Option(
+            "--recompute/--no-recompute",
+            help="Apply pending classified events before generating",
+        ),
+    ] = False,
+) -> None:
+    """Generate Form 8949, Schedule D, and Schedule 1 Line 8z for a tax year.
+
+    Exit codes: 0 = success or draft, 2 = gate held (unresolved events), 1 = error.
+    """
+    from pathlib import Path
+
+    from lemon_ledger.domain.forms.form_8949 import build_8949
+    from lemon_ledger.domain.forms.gate import check_gate, get_entity_wallet_ids, recompute_lots
+    from lemon_ledger.domain.forms.read_model import fetch_disposal_rows, fetch_reward_income
+    from lemon_ledger.domain.forms.render.pdf_8949 import render_form_8949
+    from lemon_ledger.domain.forms.render.pdf_schedule_1 import render_schedule_1
+    from lemon_ledger.domain.forms.render.pdf_schedule_d import render_schedule_d
+    from lemon_ledger.domain.forms.schedule_1 import build_schedule_1
+    from lemon_ledger.domain.forms.schedule_d import build_schedule_d
+
+    try:
+        entity_id = uuid.UUID(entity)
+    except ValueError as exc:
+        typer.echo(f"Invalid entity UUID: {entity!r}", err=True)
+        raise typer.Exit(1) from exc
+
+    out_dir = Path(out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    maker = _get_sessionmaker()
+
+    with worker_session(maker) as session:
+        if recompute:
+            wallet_ids = get_entity_wallet_ids(session, entity_id)
+            n = recompute_lots(session, wallet_ids, year)
+            typer.echo(f"recompute: applied {n} events across {len(wallet_ids)} wallets")
+            session.commit()
+
+        gate = check_gate(session, entity_id, year)
+
+        if gate.is_held and not draft:
+            typer.echo(
+                f"Gate held — {len(gate.blocker_rows)} blocking event(s). "
+                "Resolve them or pass --draft to proceed with a watermark.",
+                err=True,
+            )
+            typer.echo(json.dumps(gate.blocker_rows, indent=2), err=True)
+            raise typer.Exit(2)
+
+        is_draft = gate.is_held and draft
+        if is_draft:
+            typer.echo(
+                f"DRAFT mode: {len(gate.blocker_rows)} blocking event(s) unresolved. "
+                "Generating with DRAFT watermark.",
+                err=True,
+            )
+
+        disposal_rows = fetch_disposal_rows(session, entity_id, year)
+        reward_income = fetch_reward_income(session, entity_id, year)
+
+    form_8949 = build_8949(disposal_rows, entity_id, year, is_draft=is_draft)
+    sched_d = build_schedule_d(form_8949)
+    sched_1 = build_schedule_1(reward_income, is_draft=is_draft)
+
+    prefix = f"form8949_{year}_{entity_id}"
+    p8949 = render_form_8949(form_8949, out_dir / f"{prefix}.pdf")
+    pscheDD = render_schedule_d(sched_d, out_dir / f"{prefix}_schedule_d.pdf")
+    pSched1 = render_schedule_1(sched_1, out_dir / f"{prefix}_schedule_1.pdf")
+
+    manifest = {
+        "tax_year": year,
+        "entity_id": str(entity_id),
+        "is_draft": is_draft,
+        "disposals": len(disposal_rows),
+        "form_8949": {
+            box: {
+                "rows": len(sub.rows),
+                "proceeds": str(sub.total_proceeds),
+                "basis": str(sub.total_basis),
+                "adjustment": str(sub.total_adjustment),
+                "gain_loss_net": str(sub.total_gain_loss_net),
+            }
+            for box, sub in form_8949.boxes.items()
+            if sub.rows
+        },
+        "schedule_d": {
+            "short_term_net": str(sched_d.short_term_net),
+            "long_term_net": str(sched_d.long_term_net),
+            "total_net": str(sched_d.total_net),
+        },
+        "schedule_1_line_8z": str(sched_1.line_8z_income),
+        "files": [str(p8949), str(pscheDD), str(pSched1)],
+    }
+    typer.echo(json.dumps(manifest, indent=2))
